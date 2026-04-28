@@ -18,7 +18,6 @@ input group "=== ICHIMOKU PARAMETRY (H1 i D1 - po optymalizacji) ==="
 input int      InpTenkan        = 13;       // Tenkan-sen
 input int      InpKijun         = 28;       // Kijun-sen
 input int      InpSenkouB       = 82;       // Senkou Span B
-input int      InpChikouShift   = 26;       // Przesuniecie Chikou (oryginal=26)
 
 input group "=== ZARZADZANIE RYZYKIEM ==="
 input double   InpRiskPercent   = 1.0;      // Ryzyko na transakcje (%)
@@ -80,8 +79,7 @@ int OnInit()
       }
    }
 
-   Print("Ichimoku Gold H1 EA init. ", InpTenkan, "/", InpKijun, "/", InpSenkouB,
-         " ChikouShift=", InpChikouShift);
+   Print("Ichimoku Gold H1 EA init. ", InpTenkan, "/", InpKijun, "/", InpSenkouB);
    return INIT_SUCCEEDED;
 }
 
@@ -136,8 +134,12 @@ void OnNewBarH1()
    // Chikou H1: porownanie Close[1] z Close[1 + Kijun]
    // (nie czytamy bufora 4 - w MT5 wartosc Chikou przy biezacej swiecy
    //  to po prostu Close, a porownanie w terazniejszosci robimy w tyl)
-   double closeForChikouH1 = iClose(_Symbol, PERIOD_H1, 1);
-   double closeBackH1      = iClose(_Symbol, PERIOD_H1, 1 + InpChikouShift);
+   // Chikou H1 - czytamy bufor 4 ze stalym shiftem 27 (zgodnie z oryginalna optymalizacja)
+   double chikouArr[];
+   ArraySetAsSeries(chikouArr, true);
+   if(CopyBuffer(handleIchiH1, 4, 27, 1, chikouArr) <= 0) return;
+   double chikouH1        = chikouArr[0];
+   double closeBackH1Ref  = iClose(_Symbol, PERIOD_H1, 27);
 
    // Ceny H1
    double closeH1_1 = iClose(_Symbol, PERIOD_H1, 1);
@@ -175,7 +177,7 @@ void OnNewBarH1()
       bool crossAboveKumo  = crossBuy && (tArr[0] > kumoTopH1);
       bool crossInKumo     = crossBuy && (tArr[0] >= kumoBottomH1) && (tArr[0] <= kumoTopH1);
       bool breakoutBuy     = (closeH1_1 > kumoTopH1) && (closeH1_2 <= kumoTopH1);
-      bool chikouBuy       = (closeForChikouH1 > closeBackH1);
+      bool chikouBuy       = (chikouH1 > closeBackH1Ref);
 
       if((crossAboveKumo || crossInKumo || breakoutBuy) && chikouBuy)
          buySignal = true;
@@ -191,7 +193,7 @@ void OnNewBarH1()
       bool crossBelowKumo  = crossSell && (tArr[0] < kumoBottomH1);
       bool crossInKumo     = crossSell && (tArr[0] >= kumoBottomH1) && (tArr[0] <= kumoTopH1);
       bool breakoutSell    = (closeH1_1 < kumoBottomH1) && (closeH1_2 >= kumoBottomH1);
-      bool chikouSell      = (closeForChikouH1 < closeBackH1);
+      bool chikouSell      = (chikouH1 < closeBackH1Ref);
 
       if((crossBelowKumo || crossInKumo || breakoutSell) && chikouSell)
          sellSignal = true;
@@ -263,15 +265,19 @@ int GetD1Trend()
    double closeD1      = iClose(_Symbol, PERIOD_D1, 1);
 
    // Chikou D1: Close[1] vs Close[1 + KijunD1]
-   double closeForChikouD1 = iClose(_Symbol, PERIOD_D1, 1);
-   double closeBackD1      = iClose(_Symbol, PERIOD_D1, 1 + InpChikouShift);
+   // Chikou D1 - bufor 4 z shiftem 27 (zgodnie z oryginalna optymalizacja)
+   double chikouD1arr[];
+   ArraySetAsSeries(chikouD1arr, true);
+   if(CopyBuffer(handleIchiD1, 4, 27, 1, chikouD1arr) <= 0) return 0;
+   double chikouD1     = chikouD1arr[0];
+   double priceFor26D1 = iClose(_Symbol, PERIOD_D1, 27);
 
    bool aboveCloud = (closeD1 > kumoTopD1);
    bool belowCloud = (closeD1 < kumoBottomD1);
    bool greenCloud = (spAD1[0] > spBD1[0]);
    bool redCloud   = (spAD1[0] < spBD1[0]);
-   bool chikouUp   = (closeForChikouD1 > closeBackD1);
-   bool chikouDown = (closeForChikouD1 < closeBackD1);
+   bool chikouUp   = (chikouD1 > priceFor26D1);
+   bool chikouDown = (chikouD1 < priceFor26D1);
 
    if(aboveCloud && greenCloud && chikouUp)   return  1;
    if(belowCloud && redCloud   && chikouDown) return -1;
