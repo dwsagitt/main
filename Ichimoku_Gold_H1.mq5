@@ -119,25 +119,21 @@ void OnNewBarH1()
 {
    // Tenkan / Kijun H1 (do detekcji crossa: indeks 1 = ostatnia zamknieta)
    double tArr[], kArr[];
-   ArraySetAsSeries(tArr, true);
-   ArraySetAsSeries(kArr, true);
    if(CopyBuffer(handleIchiH1, 0, 1, 3, tArr) <= 0) return;
    if(CopyBuffer(handleIchiH1, 1, 1, 3, kArr) <= 0) return;
+   ArraySetAsSeries(tArr, true);
+   ArraySetAsSeries(kArr, true);
 
    // Chmura H1
    double spAArr[], spBArr[];
-   ArraySetAsSeries(spAArr, true);
-   ArraySetAsSeries(spBArr, true);
    if(CopyBuffer(handleIchiH1, 2, 1, 2, spAArr) <= 0) return;
    if(CopyBuffer(handleIchiH1, 3, 1, 2, spBArr) <= 0) return;
+   ArraySetAsSeries(spAArr, true);
+   ArraySetAsSeries(spBArr, true);
 
-   // Chikou H1: porownanie Close[1] z Close[1 + Kijun]
-   // (nie czytamy bufora 4 - w MT5 wartosc Chikou przy biezacej swiecy
-   //  to po prostu Close, a porownanie w terazniejszosci robimy w tyl)
-   // Chikou H1 - czytamy bufor 4 ze stalym shiftem 27 (zgodnie z oryginalna optymalizacja)
+   // Chikou H1 (26 swiec wstecz) - bufor 4, shift 27 (oryginalna optymalizacja)
    double chikouArr[];
-   ArraySetAsSeries(chikouArr, true);
-   if(CopyBuffer(handleIchiH1, 4, 27, 1, chikouArr) <= 0) return;
+   CopyBuffer(handleIchiH1, 4, 27, 1, chikouArr);
    double chikouH1        = chikouArr[0];
    double closeBackH1Ref  = iClose(_Symbol, PERIOD_H1, 27);
 
@@ -220,8 +216,8 @@ bool FilterConsolidation(double kumoWidthPips)
 
    // 2. Kijun plaski
    double kijunArr[];
+   CopyBuffer(handleIchiH1, 1, 1, InpKijunFlatBars + 1, kijunArr);
    ArraySetAsSeries(kijunArr, true);
-   if(CopyBuffer(handleIchiH1, 1, 1, InpKijunFlatBars + 1, kijunArr) <= 0) return false;
 
    bool kijunFlat = true;
    for(int i = 1; i <= InpKijunFlatBars; i++) {
@@ -238,8 +234,8 @@ bool FilterConsolidation(double kumoWidthPips)
    // 3. ADX
    if(InpUseADX) {
       double adxArr[];
+      CopyBuffer(handleADX, 0, 1, 2, adxArr);
       ArraySetAsSeries(adxArr, true);
-      if(CopyBuffer(handleADX, 0, 1, 2, adxArr) <= 0) return false;
       if(adxArr[0] < InpADXMin) {
          if(InpDebug) PrintFormat("FILTR: ADX %.2f < %.2f", adxArr[0], InpADXMin);
          return false;
@@ -255,20 +251,18 @@ bool FilterConsolidation(double kumoWidthPips)
 int GetD1Trend()
 {
    double spAD1[], spBD1[];
+   CopyBuffer(handleIchiD1, 2, 1, 2, spAD1);
+   CopyBuffer(handleIchiD1, 3, 1, 2, spBD1);
    ArraySetAsSeries(spAD1, true);
    ArraySetAsSeries(spBD1, true);
-   if(CopyBuffer(handleIchiD1, 2, 1, 2, spAD1) <= 0) return 0;
-   if(CopyBuffer(handleIchiD1, 3, 1, 2, spBD1) <= 0) return 0;
 
    double kumoTopD1    = MathMax(spAD1[0], spBD1[0]);
    double kumoBottomD1 = MathMin(spAD1[0], spBD1[0]);
    double closeD1      = iClose(_Symbol, PERIOD_D1, 1);
 
-   // Chikou D1: Close[1] vs Close[1 + KijunD1]
-   // Chikou D1 - bufor 4 z shiftem 27 (zgodnie z oryginalna optymalizacja)
+   // Chikou D1
    double chikouD1arr[];
-   ArraySetAsSeries(chikouD1arr, true);
-   if(CopyBuffer(handleIchiD1, 4, 27, 1, chikouD1arr) <= 0) return 0;
+   CopyBuffer(handleIchiD1, 4, 27, 1, chikouD1arr);
    double chikouD1     = chikouD1arr[0];
    double priceFor26D1 = iClose(_Symbol, PERIOD_D1, 27);
 
@@ -354,8 +348,8 @@ void CheckCloseConditions()
    bool isBuy = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
 
    double tenkanArr[];
+   CopyBuffer(handleIchiH1, 0, 1, 2, tenkanArr);
    ArraySetAsSeries(tenkanArr, true);
-   if(CopyBuffer(handleIchiH1, 0, 1, 2, tenkanArr) <= 0) return;
    double tenkanNow = tenkanArr[0];
 
    double closeH1_1  = iClose(_Symbol, PERIOD_H1, 1);
@@ -477,8 +471,8 @@ bool PositionExistsWithMagic()
 double GetKijunH1()
 {
    double kArr[];
+   CopyBuffer(handleIchiH1, 1, 1, 2, kArr);
    ArraySetAsSeries(kArr, true);
-   if(CopyBuffer(handleIchiH1, 1, 1, 2, kArr) <= 0) return 0;
    return kArr[0];
 }
 
