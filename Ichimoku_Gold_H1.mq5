@@ -106,11 +106,7 @@ void OnTick()
 //+------------------------------------------------------------------+
 void OnNewBarH1()
 {
-   double tenkanH1_1, tenkanH1_2;
-   double kijunH1_1,  kijunH1_2;
-   double spanAH1_1,  spanBH1_1;
-   double chikouH1_1;
-
+   double tenkanH1_1, kijunH1_1, spanAH1_1, spanBH1_1, chikouH1_1;
    if(!GetIchiH1Values(1, tenkanH1_1, kijunH1_1, spanAH1_1, spanBH1_1, chikouH1_1)) return;
 
    double tArr[], kArr[];
