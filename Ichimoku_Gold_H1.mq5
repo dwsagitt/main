@@ -124,18 +124,18 @@ void OnTick()
 void OnNewBarH1()
 {
    // Tenkan / Kijun H1 (do detekcji crossa: indeks 1 = ostatnia zamknieta)
-   double tArr[3], kArr[3];
-   if(CopyBuffer(handleIchiH1, 0, 1, 3, tArr) <= 0) return;
-   if(CopyBuffer(handleIchiH1, 1, 1, 3, kArr) <= 0) return;
+   double tArr[], kArr[];
    ArraySetAsSeries(tArr, true);
    ArraySetAsSeries(kArr, true);
+   if(CopyBuffer(handleIchiH1, 0, 1, 3, tArr) <= 0) return;
+   if(CopyBuffer(handleIchiH1, 1, 1, 3, kArr) <= 0) return;
 
    // Chmura H1
-   double spAArr[2], spBArr[2];
-   if(CopyBuffer(handleIchiH1, 2, 1, 2, spAArr) <= 0) return;
-   if(CopyBuffer(handleIchiH1, 3, 1, 2, spBArr) <= 0) return;
+   double spAArr[], spBArr[];
    ArraySetAsSeries(spAArr, true);
    ArraySetAsSeries(spBArr, true);
+   if(CopyBuffer(handleIchiH1, 2, 1, 2, spAArr) <= 0) return;
+   if(CopyBuffer(handleIchiH1, 3, 1, 2, spBArr) <= 0) return;
 
    // Chikou H1: porownanie Close[1] z Close[1 + Kijun]
    // (nie czytamy bufora 4 - w MT5 wartosc Chikou przy biezacej swiecy
@@ -221,9 +221,9 @@ bool FilterConsolidation(double kumoWidthPips)
 
    // 3. ADX
    if(InpUseADX) {
-      double adxArr[2];
-      if(CopyBuffer(handleADX, 0, 1, 2, adxArr) <= 0) return false;
+      double adxArr[];
       ArraySetAsSeries(adxArr, true);
+      if(CopyBuffer(handleADX, 0, 1, 2, adxArr) <= 0) return false;
       if(adxArr[0] < InpADXMin) return false;
    }
 
@@ -235,11 +235,11 @@ bool FilterConsolidation(double kumoWidthPips)
 //+------------------------------------------------------------------+
 int GetD1Trend()
 {
-   double spAD1[2], spBD1[2];
-   if(CopyBuffer(handleIchiD1, 2, 1, 2, spAD1) <= 0) return 0;
-   if(CopyBuffer(handleIchiD1, 3, 1, 2, spBD1) <= 0) return 0;
+   double spAD1[], spBD1[];
    ArraySetAsSeries(spAD1, true);
    ArraySetAsSeries(spBD1, true);
+   if(CopyBuffer(handleIchiD1, 2, 1, 2, spAD1) <= 0) return 0;
+   if(CopyBuffer(handleIchiD1, 3, 1, 2, spBD1) <= 0) return 0;
 
    double kumoTopD1    = MathMax(spAD1[0], spBD1[0]);
    double kumoBottomD1 = MathMin(spAD1[0], spBD1[0]);
@@ -349,9 +349,9 @@ void CheckCloseConditions()
 
    bool isBuy = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
 
-   double tenkanArr[2];
-   if(CopyBuffer(handleIchiH1, 0, 1, 2, tenkanArr) <= 0) return;
+   double tenkanArr[];
    ArraySetAsSeries(tenkanArr, true);
+   if(CopyBuffer(handleIchiH1, 0, 1, 2, tenkanArr) <= 0) return;
    double tenkanNow = tenkanArr[0];
 
    double closeH1_1  = iClose(_Symbol, PERIOD_H1, 1);
@@ -472,9 +472,9 @@ bool PositionExistsWithMagic()
 //+------------------------------------------------------------------+
 double GetKijunH1()
 {
-   double kArr[2];
-   if(CopyBuffer(handleIchiH1, 1, 1, 2, kArr) <= 0) return 0;
+   double kArr[];
    ArraySetAsSeries(kArr, true);
+   if(CopyBuffer(handleIchiH1, 1, 1, 2, kArr) <= 0) return 0;
    return kArr[0];
 }
 
