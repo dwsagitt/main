@@ -54,7 +54,6 @@ int OnInit()
 {
    trade.SetExpertMagicNumber(InpMagic);
    trade.SetDeviationInPoints(InpSlippage);
-   trade.SetTypeFillingBySymbol(_Symbol);
 
    // Ichimoku H1 - parametry po optymalizacji
    handleIchiH1 = iIchimoku(_Symbol, PERIOD_H1,
@@ -288,13 +287,9 @@ void OpenBuy()
    double kijunH1 = GetKijunH1();
    double lastLow = iLow(_Symbol, PERIOD_H1, 1);
 
-   long stopsLevel = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
-   double minDist  = (stopsLevel + 5) * _Point;
-
    double slLevel = MathMin(kijunH1, lastLow) - 10 * _Point;
-   if(ask - slLevel < minDist) slLevel = ask - minDist;
-
    double slDist  = ask - slLevel;
+
    if(slDist <= 0) {
       Print("BUY: nieprawidlowy SL, pomijam");
       return;
@@ -322,13 +317,9 @@ void OpenSell()
    double kijunH1  = GetKijunH1();
    double lastHigh = iHigh(_Symbol, PERIOD_H1, 1);
 
-   long stopsLevel = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
-   double minDist  = (stopsLevel + 5) * _Point;
-
    double slLevel = MathMax(kijunH1, lastHigh) + 10 * _Point;
-   if(slLevel - bid < minDist) slLevel = bid + minDist;
-
    double slDist  = slLevel - bid;
+
    if(slDist <= 0) {
       Print("SELL: nieprawidlowy SL, pomijam");
       return;
@@ -352,18 +343,7 @@ void OpenSell()
 //+------------------------------------------------------------------+
 void CheckCloseConditions()
 {
-   ulong myTicket = 0;
-   for(int i = 0; i < PositionsTotal(); i++) {
-      ulong t = PositionGetTicket(i);
-      if(t == 0) continue;
-      if((ulong)PositionGetInteger(POSITION_MAGIC) == InpMagic &&
-         PositionGetString(POSITION_SYMBOL) == _Symbol) {
-         myTicket = t;
-         break;
-      }
-   }
-   if(myTicket == 0) return;
-   if(!PositionSelectByTicket(myTicket)) return;
+   if(!PositionExistsWithMagic()) return;
 
    bool isBuy = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
 
@@ -463,7 +443,7 @@ void CloseAllPositions()
    for(int i = PositionsTotal() - 1; i >= 0; i--) {
       ulong ticket = PositionGetTicket(i);
       if(ticket == 0) continue;
-      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if(PositionGetInteger(POSITION_MAGIC) != (long)InpMagic) continue;
       if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
       trade.PositionClose(ticket);
    }
@@ -478,7 +458,7 @@ bool PositionExistsWithMagic()
    for(int i = 0; i < PositionsTotal(); i++) {
       ulong ticket = PositionGetTicket(i);
       if(ticket == 0) continue;
-      if((ulong)PositionGetInteger(POSITION_MAGIC) == InpMagic &&
+      if(PositionGetInteger(POSITION_MAGIC) == (long)InpMagic &&
          PositionGetString(POSITION_SYMBOL) == _Symbol)
          return true;
    }
@@ -510,17 +490,17 @@ double CalculateLotSize(double slDistance)
    double minLot     = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
    double maxLot     = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
 
-   if(tickValue == 0 || tickSize == 0 || lotStep == 0) return 0;
+   if(tickValue == 0 || tickSize == 0) return 0;
 
    double valuePerLot = (slDistance / tickSize) * tickValue;
-   if(valuePerLot <= 0) return 0;
+   if(valuePerLot == 0) return 0;
 
    double lots = riskAmount / valuePerLot;
    lots = MathFloor(lots / lotStep) * lotStep;
    lots = MathMax(lots, minLot);
    lots = MathMin(lots, maxLot);
 
-   return NormalizeDouble(lots, 2);
+   return lots;
 }
 
 //+------------------------------------------------------------------+
