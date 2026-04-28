@@ -40,6 +40,7 @@ input group "=== USTAWIENIA OGOLNE ==="
 input ulong    InpMagic         = 20240101; // Magic number
 input int      InpSlippage      = 50;       // Slippage w punktach
 input bool     InpUseLondonNY   = false;    // Tylko sesja London/NY
+input bool     InpDebug         = false;    // Tryb diagnostyczny (wypisuje filtry)
 
 //--- Zmienne globalne
 int    handleIchiH1, handleIchiD1, handleADX;
@@ -156,11 +157,17 @@ void OnNewBarH1()
    if(!FilterConsolidation(kumoWidthH1)) return;
 
    // --- FILTR SESJI ---
-   if(InpUseLondonNY && !IsLondonOrNYSession()) return;
+   if(InpUseLondonNY && !IsLondonOrNYSession()) {
+      if(InpDebug) Print("FILTR: poza sesja London/NY");
+      return;
+   }
 
    // --- FILTR TRENDU D1 ---
    int d1Trend = GetD1Trend();
-   if(d1Trend == 0) return;
+   if(d1Trend == 0) {
+      if(InpDebug) Print("FILTR: D1 brak trendu (cena w chmurze D1 / niespojny Chikou)");
+      return;
+   }
 
    // --- JUZ MAMY POZYCJE? ---
    if(PositionExistsWithMagic()) return;
@@ -178,6 +185,10 @@ void OnNewBarH1()
 
       if((crossAboveKumo || crossInKumo || breakoutBuy) && chikouBuy)
          buySignal = true;
+      else if(InpDebug)
+         PrintFormat("BUY skip: crossAbove=%d crossIn=%d breakout=%d chikou=%d (T=%.2f K=%.2f kumoT=%.2f kumoB=%.2f c1=%.2f c2=%.2f)",
+                     crossAboveKumo, crossInKumo, breakoutBuy, chikouBuy,
+                     tArr[0], kArr[0], kumoTopH1, kumoBottomH1, closeH1_1, closeH1_2);
    }
 
    // --- SELL ---
@@ -190,6 +201,10 @@ void OnNewBarH1()
 
       if((crossBelowKumo || crossInKumo || breakoutSell) && chikouSell)
          sellSignal = true;
+      else if(InpDebug)
+         PrintFormat("SELL skip: crossBelow=%d crossIn=%d breakout=%d chikou=%d (T=%.2f K=%.2f kumoT=%.2f kumoB=%.2f c1=%.2f c2=%.2f)",
+                     crossBelowKumo, crossInKumo, breakoutSell, chikouSell,
+                     tArr[0], kArr[0], kumoTopH1, kumoBottomH1, closeH1_1, closeH1_2);
    }
 
    if(buySignal)  OpenBuy();
@@ -202,13 +217,15 @@ void OnNewBarH1()
 bool FilterConsolidation(double kumoWidthPips)
 {
    // 1. Szerokosc chmury
-   if(kumoWidthPips < InpMinKumoWidth) return false;
+   if(kumoWidthPips < InpMinKumoWidth) {
+      if(InpDebug) PrintFormat("FILTR: chmura za waska %.1f < %.1f pips", kumoWidthPips, InpMinKumoWidth);
+      return false;
+   }
 
    // 2. Kijun plaski
    double kijunArr[];
-   ArrayResize(kijunArr, InpKijunFlatBars + 1);
-   if(CopyBuffer(handleIchiH1, 1, 1, InpKijunFlatBars + 1, kijunArr) <= 0) return false;
    ArraySetAsSeries(kijunArr, true);
+   if(CopyBuffer(handleIchiH1, 1, 1, InpKijunFlatBars + 1, kijunArr) <= 0) return false;
 
    bool kijunFlat = true;
    for(int i = 1; i <= InpKijunFlatBars; i++) {
@@ -217,14 +234,20 @@ bool FilterConsolidation(double kumoWidthPips)
          break;
       }
    }
-   if(kijunFlat) return false;
+   if(kijunFlat) {
+      if(InpDebug) PrintFormat("FILTR: Kijun plaski przez %d swiec", InpKijunFlatBars);
+      return false;
+   }
 
    // 3. ADX
    if(InpUseADX) {
       double adxArr[];
       ArraySetAsSeries(adxArr, true);
       if(CopyBuffer(handleADX, 0, 1, 2, adxArr) <= 0) return false;
-      if(adxArr[0] < InpADXMin) return false;
+      if(adxArr[0] < InpADXMin) {
+         if(InpDebug) PrintFormat("FILTR: ADX %.2f < %.2f", adxArr[0], InpADXMin);
+         return false;
+      }
    }
 
    return true;
