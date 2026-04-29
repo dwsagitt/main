@@ -53,12 +53,16 @@ input int      InpATRPeriod     = 14;       // Okres ATR (do filtrow)
 input group "=== USTAWIENIA OGOLNE ==="
 input ulong    InpMagic         = 20240102; // Magic number
 input int      InpSlippage      = 10;       // Slippage w punktach
-input bool     InpUseUSSession  = false;    // Tylko sesja US (zalecane: false dla CFD)
+input bool     InpUseUSSession  = false;    // Tylko sesja US
 input bool     InpDebug         = false;    // Tryb diagnostyczny
+input ENUM_TIMEFRAMES InpEntryTF = PERIOD_CURRENT; // TF wejscia (CURRENT = z wykresu)
+input ENUM_TIMEFRAMES InpTrendTF = PERIOD_D1;      // TF filtra trendu
 
-//--- Stale czasowe
-#define ENTRY_TF   PERIOD_H4
-#define TREND_TF   PERIOD_D1
+//--- Stale czasowe (ustawiane w OnInit)
+ENUM_TIMEFRAMES gEntryTF = PERIOD_H1;
+ENUM_TIMEFRAMES gTrendTF = PERIOD_D1;
+#define ENTRY_TF gEntryTF
+#define TREND_TF gTrendTF
 
 //--- Zmienne globalne
 int    handleIchiH4, handleIchiD1, handleADX, handleATR;
@@ -82,6 +86,9 @@ int OnInit()
    trade.SetExpertMagicNumber(InpMagic);
    trade.SetDeviationInPoints(InpSlippage);
 
+   gEntryTF = (InpEntryTF == PERIOD_CURRENT) ? _Period : InpEntryTF;
+   gTrendTF = InpTrendTF;
+
    handleIchiH4 = iIchimoku(_Symbol, ENTRY_TF, InpTenkan, InpKijun, InpSenkouB);
    if(handleIchiH4 == INVALID_HANDLE) { Print("BLAD: Ichimoku H4"); return INIT_FAILED; }
 
@@ -96,7 +103,8 @@ int OnInit()
    handleATR = iATR(_Symbol, ENTRY_TF, InpATRPeriod);
    if(handleATR == INVALID_HANDLE) { Print("BLAD: ATR"); return INIT_FAILED; }
 
-   PrintFormat("Ichimoku H4 EA init. %d/%d/%d MinKumoATR=%.2f FlatATR=%.2f ADX=%d/%.1f MinRR=%.1f Risk=%.1f%% Chikou=%d",
+   PrintFormat("Ichimoku EA init. EntryTF=%s TrendTF=%s | %d/%d/%d MinKumoATR=%.2f FlatATR=%.2f ADX=%d/%.1f MinRR=%.1f Risk=%.1f%% Chikou=%d",
+               EnumToString(gEntryTF), EnumToString(gTrendTF),
                InpTenkan, InpKijun, InpSenkouB,
                InpMinKumoATR, InpKijunFlatATR,
                InpADXPeriod, InpADXMin, InpMinRR, InpRiskPercent, InpUseChikou);
