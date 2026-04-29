@@ -24,6 +24,16 @@ input double   InpRiskPercent   = 1.0;      // Ryzyko na transakcje (%)
 input double   InpMinRR         = 6.0;      // Minimalne R:R
 input int      InpSlPoints      = 2300;     // Bazowy SL w punktach (fallback)
 
+enum ENUM_RISK_BASE
+{
+   RISK_BALANCE     = 0,  // Saldo (balance) - statyczne
+   RISK_EQUITY      = 1,  // Kapital biezacy (equity) - dynamiczne ZALECANE
+   RISK_FREE_MARGIN = 2   // Wolny depozyt (free margin)
+};
+input ENUM_RISK_BASE InpRiskBase = RISK_EQUITY;  // Baza do liczenia ryzyka
+input double   InpMaxLot         = 0.0;          // Max lot (0 = limit brokera)
+input bool     InpScaleLogs      = true;         // Loguj zmiane lota przy zmianie kapitalu
+
 input group "=== FILTR KONSOLIDACJI ==="
 input double   InpMinKumoWidth  = 85.0;     // Min. szerokosc chmury w pipsach
 input int      InpKijunFlatBars = 36;       // Ile swiec Kijun musi sie zmieniac
@@ -471,8 +481,32 @@ bool GetIchiH1Values(int shift,
 //+------------------------------------------------------------------+
 double CalculateLotSize(double slDistance)
 {
-   double balance    = AccountInfoDouble(ACCOUNT_BALANCE);
-   double riskAmount = balance * InpRiskPercent / 100.0;
+   // Baza do liczenia ryzyka - dynamicznie z aktualnego stanu konta
+   double riskBase = 0;
+   string baseLabel = "";
+   switch(InpRiskBase)
+   {
+      case RISK_EQUITY:
+         riskBase = AccountInfoDouble(ACCOUNT_EQUITY);
+         baseLabel = "Equity";
+         break;
+      case RISK_FREE_MARGIN:
+         riskBase = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
+         baseLabel = "FreeMargin";
+         break;
+      case RISK_BALANCE:
+      default:
+         riskBase = AccountInfoDouble(ACCOUNT_BALANCE);
+         baseLabel = "Balance";
+         break;
+   }
+
+   if(riskBase <= 0) {
+      Print("BLAD lota: ", baseLabel, " <= 0 (", riskBase, ")");
+      return 0;
+   }
+
+   double riskAmount = riskBase * InpRiskPercent / 100.0;
 
    double tickValue  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
    double tickSize   = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
@@ -480,15 +514,22 @@ double CalculateLotSize(double slDistance)
    double minLot     = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
    double maxLot     = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
 
-   if(tickValue == 0 || tickSize == 0) return 0;
+   if(tickValue == 0 || tickSize == 0 || lotStep == 0) return 0;
 
    double valuePerLot = (slDistance / tickSize) * tickValue;
-   if(valuePerLot == 0) return 0;
+   if(valuePerLot <= 0) return 0;
 
    double lots = riskAmount / valuePerLot;
    lots = MathFloor(lots / lotStep) * lotStep;
    lots = MathMax(lots, minLot);
    lots = MathMin(lots, maxLot);
+
+   if(InpMaxLot > 0)
+      lots = MathMin(lots, InpMaxLot);
+
+   if(InpScaleLogs)
+      PrintFormat("Lot calc: base=%s=%.2f risk=%.2f%% (%.2f) slDist=%.2f valPerLot=%.2f -> %.2f lots",
+                  baseLabel, riskBase, InpRiskPercent, riskAmount, slDistance, valuePerLot, lots);
 
    return lots;
 }
