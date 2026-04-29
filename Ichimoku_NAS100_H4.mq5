@@ -53,10 +53,17 @@ input int      InpATRPeriod     = 14;       // Okres ATR (do filtrow)
 input group "=== USTAWIENIA OGOLNE ==="
 input ulong    InpMagic         = 20240102; // Magic number
 input int      InpSlippage      = 10;       // Slippage w punktach
-input bool     InpUseUSSession  = false;    // Tylko sesja US
+input bool     InpUseUSSession  = false;    // (przestarzale) Tylko sesja US
 input bool     InpDebug         = false;    // Tryb diagnostyczny
 input ENUM_TIMEFRAMES InpEntryTF = PERIOD_CURRENT; // TF wejscia (CURRENT = z wykresu)
 input ENUM_TIMEFRAMES InpTrendTF = PERIOD_D1;      // TF filtra trendu
+
+input group "=== FILTR GODZINOWY (UTC) ==="
+input bool     InpUseHourFilter = false;    // Wlacz filtr godzinowy
+input int      InpStartHour     = 13;       // Godzina startu (UTC, 0-23)
+input int      InpEndHour       = 20;       // Godzina konca (UTC, 0-23)
+input int      InpStartMinute   = 30;       // Minuta startu (np. 30 dla 13:30)
+input bool     InpBlockFridayPM = false;    // Nie otwieraj po 18:00 UTC w piatek
 
 //--- Stale czasowe (ustawiane w OnInit)
 ENUM_TIMEFRAMES gEntryTF = PERIOD_H1;
@@ -179,6 +186,8 @@ void OnNewBarH4()
    }
 
    if(!FilterConsolidation(kumoWidth, atr)) return;
+
+   if(!IsAllowedHour()) return;
 
    if(InpUseUSSession && !IsUSSession()) {
       if(InpDebug) Print("FILTR: poza sesja US");
@@ -641,6 +650,42 @@ bool IsUSSession()
    int h = dt.hour;
    // Pre-market + regular session: 13:00 - 21:00 UTC
    return (h >= 13 && h < 21);
+}
+
+//+------------------------------------------------------------------+
+//| Filtr godzinowy z opcjonalnym blokowaniem piatku                 |
+//+------------------------------------------------------------------+
+bool IsAllowedHour()
+{
+   if(!InpUseHourFilter) return true;
+
+   MqlDateTime dt;
+   TimeToStruct(TimeGMT(), dt);
+   int h = dt.hour;
+   int m = dt.min;
+
+   int nowMin   = h * 60 + m;
+   int startMin = InpStartHour * 60 + InpStartMinute;
+   int endMin   = InpEndHour   * 60;
+
+   bool inWindow;
+   if(startMin <= endMin)
+      inWindow = (nowMin >= startMin && nowMin < endMin);
+   else
+      inWindow = (nowMin >= startMin || nowMin < endMin);
+
+   if(!inWindow) {
+      if(InpDebug) PrintFormat("FILTR: poza godzinami (%d:%02d, okno %d:%02d-%d:00)",
+                               h, m, InpStartHour, InpStartMinute, InpEndHour);
+      return false;
+   }
+
+   if(InpBlockFridayPM && dt.day_of_week == 5 && h >= 18) {
+      if(InpDebug) Print("FILTR: piatek po 18:00 UTC - blokada");
+      return false;
+   }
+
+   return true;
 }
 
 //+------------------------------------------------------------------+
