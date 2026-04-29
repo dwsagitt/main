@@ -4,7 +4,7 @@
 //|                    Trend: D1 | Wejscie: H1 | Filtr konsolidacji |
 //+------------------------------------------------------------------+
 #property copyright "Strategia Ichimoku Gold H1"
-#property version   "1.00"
+#property version   "1.20"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -13,7 +13,7 @@
 CTrade         trade;
 CPositionInfo  posInfo;
 
-//--- Parametry wejsciowe
+//--- Parametry wejsciowe (wartosci po optymalizacji w MT5)
 input group "=== ICHIMOKU PARAMETRY ==="
 input int      InpTenkan        = 13;       // Tenkan-sen
 input int      InpKijun         = 28;       // Kijun-sen
@@ -21,31 +21,32 @@ input int      InpSenkouB       = 82;       // Senkou Span B
 
 input group "=== ZARZADZANIE RYZYKIEM ==="
 input double   InpRiskPercent   = 1.0;      // Ryzyko na transakcje (%)
-input double   InpMinRR         = 1.5;      // Minimalne R:R
-input int      InpSlPoints      = 300;      // Bazowy SL w punktach (fallback)
+input double   InpMinRR         = 6.0;      // Minimalne R:R
+input int      InpSlPoints      = 2300;     // Bazowy SL w punktach (fallback)
 
 input group "=== FILTR KONSOLIDACJI ==="
-input double   InpMinKumoWidth  = 10.0;     // Min. szerokosc chmury w pipsach
-input int      InpKijunFlatBars = 5;        // Ile swiec Kijun musi sie zmieniac
+input double   InpMinKumoWidth  = 85.0;     // Min. szerokosc chmury w pipsach
+input int      InpKijunFlatBars = 36;       // Ile swiec Kijun musi sie zmieniac
 input bool     InpUseADX        = true;     // Uzyc filtra ADX
-input int      InpADXPeriod     = 14;       // Okres ADX
+input int      InpADXPeriod     = 10;       // Okres ADX
 input double   InpADXMin        = 20.0;     // Minimalne ADX
 
 input group "=== USTAWIENIA OGOLNE ==="
 input ulong    InpMagic         = 20240101; // Magic number
-input int      InpSlippage      = 30;       // Slippage w punktach
+input int      InpSlippage      = 50;       // Slippage w punktach
 input bool     InpUseLondonNY   = false;    // Tylko sesja London/NY
 input bool     InpDebug         = false;    // Tryb diagnostyczny
 
 //--- Zmienne globalne
 int    handleIchiH1, handleIchiD1, handleADX;
-int    barCountH1 = 0;
 
 bool   signalCloseBarRecorded = false;
 double signalCloseBarHigh     = 0;
 double signalCloseBarLow      = 0;
 datetime signalCloseBarTime   = 0;
 
+//+------------------------------------------------------------------+
+//| Expert initialization                                            |
 //+------------------------------------------------------------------+
 int OnInit()
 {
@@ -72,10 +73,15 @@ int OnInit()
       }
    }
 
-   Print("Ichimoku Gold H1 EA zainicjalizowany pomyslnie.");
+   PrintFormat("Ichimoku Gold H1 EA init. %d/%d/%d MinKumo=%.1f FlatBars=%d ADX=%d/%.1f MinRR=%.1f",
+               InpTenkan, InpKijun, InpSenkouB,
+               InpMinKumoWidth, InpKijunFlatBars,
+               InpADXPeriod, InpADXMin, InpMinRR);
    return INIT_SUCCEEDED;
 }
 
+//+------------------------------------------------------------------+
+//| Expert deinitialization                                          |
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
@@ -84,6 +90,8 @@ void OnDeinit(const int reason)
    if(handleADX    != INVALID_HANDLE) IndicatorRelease(handleADX);
 }
 
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
 //+------------------------------------------------------------------+
 void OnTick()
 {
@@ -124,7 +132,7 @@ void OnNewBarH1()
    int chikouShift = InpKijun;
    double chikouArr[];
    CopyBuffer(handleIchiH1, 4, 1 + chikouShift, 1, chikouArr);
-   double chikouH1   = chikouArr[0];
+   double chikouH1 = chikouArr[0];
 
    double closeH1_1 = iClose(_Symbol, PERIOD_H1, 1);
    double closeH1_2 = iClose(_Symbol, PERIOD_H1, 2);
@@ -136,7 +144,7 @@ void OnNewBarH1()
    if(!FilterConsolidation(kumoWidthH1)) return;
 
    if(InpUseLondonNY && !IsLondonOrNYSession()) {
-      if(InpDebug) Print("FILTR: poza sesja");
+      if(InpDebug) Print("FILTR: poza sesja London/NY");
       return;
    }
 
@@ -151,7 +159,6 @@ void OnNewBarH1()
    bool buySignal  = false;
    bool sellSignal = false;
 
-   // --- BUY ---
    if(d1Trend == 1) {
       bool crossBuy        = (tArr[0] > kArr[0]) && (tArr[1] <= kArr[1]);
       bool crossAboveKumo  = crossBuy && (tArr[0] > kumoTopH1);
@@ -163,7 +170,6 @@ void OnNewBarH1()
          buySignal = true;
    }
 
-   // --- SELL ---
    if(d1Trend == -1) {
       bool crossSell       = (tArr[0] < kArr[0]) && (tArr[1] >= kArr[1]);
       bool crossBelowKumo  = crossSell && (tArr[0] < kumoBottomH1);
@@ -179,6 +185,8 @@ void OnNewBarH1()
    if(sellSignal) OpenSell();
 }
 
+//+------------------------------------------------------------------+
+//| Filtr konsolidacji                                               |
 //+------------------------------------------------------------------+
 bool FilterConsolidation(double kumoWidthPips)
 {
@@ -218,6 +226,8 @@ bool FilterConsolidation(double kumoWidthPips)
 }
 
 //+------------------------------------------------------------------+
+//| Trend D1: 1=wzrostowy, -1=spadkowy, 0=brak                       |
+//+------------------------------------------------------------------+
 int GetD1Trend()
 {
    double spAD1[], spBD1[];
@@ -248,6 +258,8 @@ int GetD1Trend()
 }
 
 //+------------------------------------------------------------------+
+//| Otwarcie BUY                                                     |
+//+------------------------------------------------------------------+
 void OpenBuy()
 {
    double ask     = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
@@ -263,7 +275,7 @@ void OpenBuy()
    }
 
    double tpEstimate = ask + slDist * InpMinRR;
-   double lotSize = CalculateLotSize(slDist);
+   double lotSize    = CalculateLotSize(slDist);
    if(lotSize <= 0) return;
 
    if(trade.Buy(lotSize, _Symbol, ask, slLevel, tpEstimate, "Ichimoku BUY")) {
@@ -276,10 +288,12 @@ void OpenBuy()
 }
 
 //+------------------------------------------------------------------+
+//| Otwarcie SELL                                                    |
+//+------------------------------------------------------------------+
 void OpenSell()
 {
-   double bid     = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   double kijunH1 = GetKijunH1();
+   double bid      = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double kijunH1  = GetKijunH1();
    double lastHigh = iHigh(_Symbol, PERIOD_H1, 1);
 
    double slLevel = MathMax(kijunH1, lastHigh) + 10 * _Point;
@@ -304,6 +318,8 @@ void OpenSell()
 }
 
 //+------------------------------------------------------------------+
+//| Sprawdz warunki zamkniecia pozycji                               |
+//+------------------------------------------------------------------+
 void CheckCloseConditions()
 {
    if(!PositionExistsWithMagic()) return;
@@ -315,9 +331,9 @@ void CheckCloseConditions()
    ArraySetAsSeries(tenkanArr, true);
    double tenkanNow = tenkanArr[0];
 
-   double closeH1_1 = iClose(_Symbol, PERIOD_H1, 1);
-   double highH1_1  = iHigh(_Symbol,  PERIOD_H1, 1);
-   double lowH1_1   = iLow(_Symbol,   PERIOD_H1, 1);
+   double closeH1_1  = iClose(_Symbol, PERIOD_H1, 1);
+   double highH1_1   = iHigh(_Symbol,  PERIOD_H1, 1);
+   double lowH1_1    = iLow(_Symbol,   PERIOD_H1, 1);
    datetime timeH1_1 = iTime(_Symbol, PERIOD_H1, 1);
 
    if(isBuy) {
@@ -326,33 +342,29 @@ void CheckCloseConditions()
             signalCloseBarRecorded = true;
             signalCloseBarHigh     = highH1_1;
             signalCloseBarTime     = timeH1_1;
-            Print("BUY: Swieca sygnalowa zamkniecia wykryta. High=", signalCloseBarHigh);
+            Print("BUY: Swieca sygnalowa zamkniecia. High=", signalCloseBarHigh);
          }
       }
       else {
-         double highH1_2 = iHigh(_Symbol, PERIOD_H1, 2);
          datetime timeH1_2 = iTime(_Symbol, PERIOD_H1, 2);
-
          if(timeH1_2 == signalCloseBarTime) {
             double highConfirm = iHigh(_Symbol, PERIOD_H1, 1);
             if(highConfirm < signalCloseBarHigh) {
-               Print("BUY: Potwierdzenie zamkniecia. Zamykam pozycje.");
+               Print("BUY: Potwierdzenie zamkniecia. Zamykam.");
                CloseAllPositions();
             }
             else {
-               Print("BUY: Potwierdzenie nieudane (high powyzej sygnalu). Resetuj.");
+               Print("BUY: Potwierdzenie nieudane. Reset.");
                ResetCloseSignal();
             }
          }
          else if(timeH1_1 != signalCloseBarTime) {
             double highConfirm = highH1_1;
             if(highConfirm < signalCloseBarHigh) {
-               Print("BUY: Potwierdzenie zamkniecia (delayed). Zamykam.");
+               Print("BUY: Potwierdzenie (delayed). Zamykam.");
                CloseAllPositions();
             }
-            else {
-               ResetCloseSignal();
-            }
+            else ResetCloseSignal();
          }
       }
    }
@@ -363,7 +375,7 @@ void CheckCloseConditions()
             signalCloseBarRecorded = true;
             signalCloseBarLow      = lowH1_1;
             signalCloseBarTime     = timeH1_1;
-            Print("SELL: Swieca sygnalowa zamkniecia wykryta. Low=", signalCloseBarLow);
+            Print("SELL: Swieca sygnalowa zamkniecia. Low=", signalCloseBarLow);
          }
       }
       else {
@@ -371,32 +383,32 @@ void CheckCloseConditions()
          if(timeH1_2 == signalCloseBarTime) {
             double lowConfirm = iLow(_Symbol, PERIOD_H1, 1);
             if(lowConfirm > signalCloseBarLow) {
-               Print("SELL: Potwierdzenie zamkniecia. Zamykam pozycje.");
+               Print("SELL: Potwierdzenie zamkniecia. Zamykam.");
                CloseAllPositions();
             }
             else {
-               Print("SELL: Potwierdzenie nieudane. Resetuj.");
+               Print("SELL: Potwierdzenie nieudane. Reset.");
                ResetCloseSignal();
             }
          }
          else if(timeH1_1 != signalCloseBarTime) {
             double lowConfirm = lowH1_1;
             if(lowConfirm > signalCloseBarLow) {
-               Print("SELL: Potwierdzenie zamkniecia (delayed). Zamykam.");
+               Print("SELL: Potwierdzenie (delayed). Zamykam.");
                CloseAllPositions();
             }
-            else {
-               ResetCloseSignal();
-            }
+            else ResetCloseSignal();
          }
       }
    }
 
    int d1Trend = GetD1Trend();
-   if(isBuy  && d1Trend == -1) { Print("AWARYJNE: D1 zmienil trend na SELL. Zamykam BUY."); CloseAllPositions(); }
-   if(!isBuy && d1Trend ==  1) { Print("AWARYJNE: D1 zmienil trend na BUY. Zamykam SELL."); CloseAllPositions(); }
+   if(isBuy  && d1Trend == -1) { Print("AWARYJNE: D1 zmienil trend na SELL."); CloseAllPositions(); }
+   if(!isBuy && d1Trend ==  1) { Print("AWARYJNE: D1 zmienil trend na BUY.");  CloseAllPositions(); }
 }
 
+//+------------------------------------------------------------------+
+//| Zamknij wszystkie pozycje EA                                     |
 //+------------------------------------------------------------------+
 void CloseAllPositions()
 {
@@ -411,6 +423,8 @@ void CloseAllPositions()
 }
 
 //+------------------------------------------------------------------+
+//| Sprawdz czy jest otwarta pozycja EA                              |
+//+------------------------------------------------------------------+
 bool PositionExistsWithMagic()
 {
    for(int i = 0; i < PositionsTotal(); i++) {
@@ -424,6 +438,8 @@ bool PositionExistsWithMagic()
 }
 
 //+------------------------------------------------------------------+
+//| Pobierz Kijun H1 (ostatnia zamknieta)                            |
+//+------------------------------------------------------------------+
 double GetKijunH1()
 {
    double kArr[];
@@ -432,6 +448,8 @@ double GetKijunH1()
    return kArr[0];
 }
 
+//+------------------------------------------------------------------+
+//| Pomocnicze: pobierz wartosci Ichimoku H1 dla danego indeksu      |
 //+------------------------------------------------------------------+
 bool GetIchiH1Values(int shift,
                      double &tenkan, double &kijun,
@@ -448,6 +466,8 @@ bool GetIchiH1Values(int shift,
    return true;
 }
 
+//+------------------------------------------------------------------+
+//| Oblicz wielkosc lota                                             |
 //+------------------------------------------------------------------+
 double CalculateLotSize(double slDistance)
 {
@@ -474,6 +494,8 @@ double CalculateLotSize(double slDistance)
 }
 
 //+------------------------------------------------------------------+
+//| Filtr sesji London/NY (UTC)                                      |
+//+------------------------------------------------------------------+
 bool IsLondonOrNYSession()
 {
    MqlDateTime dt;
@@ -482,6 +504,8 @@ bool IsLondonOrNYSession()
    return (h >= 7 && h < 21);
 }
 
+//+------------------------------------------------------------------+
+//| Reset sygnalu zamkniecia                                         |
 //+------------------------------------------------------------------+
 void ResetCloseSignal()
 {
