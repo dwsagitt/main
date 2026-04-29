@@ -41,16 +41,19 @@ input bool     InpUseTrailKijun = true;     // Trailing Stop po Kijun H4
 input double   InpTrailStartAtR = 1.5;      // Po ilu R startuje trailing
 
 input group "=== FILTR KONSOLIDACJI ==="
-input double   InpMinKumoWidth  = 30.0;     // Min. szerokosc chmury w punktach (NAS100)
+input double   InpMinKumoATR    = 0.3;      // Min. szerokosc chmury jako mnoznik ATR (0=wylaczone)
 input int      InpKijunFlatBars = 5;        // Ile swiec Kijun musi sie zmieniac
+input double   InpKijunFlatATR  = 0.15;     // Prog "Kijun flat" jako mnoznik ATR
 input bool     InpUseADX        = true;     // Uzyc filtra ADX
 input int      InpADXPeriod     = 14;       // Okres ADX
-input double   InpADXMin        = 22.0;     // Minimalne ADX (NAS100 lubi mocniejsze trendy)
+input double   InpADXMin        = 18.0;     // Minimalne ADX
+input bool     InpUseChikou     = true;     // Wymagaj potwierdzenia Chikou
+input int      InpATRPeriod     = 14;       // Okres ATR (do filtrow)
 
 input group "=== USTAWIENIA OGOLNE ==="
 input ulong    InpMagic         = 20240102; // Magic number
 input int      InpSlippage      = 10;       // Slippage w punktach
-input bool     InpUseUSSession  = true;     // Tylko sesja US (NAS100 to indeks USA)
+input bool     InpUseUSSession  = false;    // Tylko sesja US (zalecane: false dla CFD)
 input bool     InpDebug         = false;    // Tryb diagnostyczny
 
 //--- Stale czasowe
@@ -58,7 +61,7 @@ input bool     InpDebug         = false;    // Tryb diagnostyczny
 #define TREND_TF   PERIOD_D1
 
 //--- Zmienne globalne
-int    handleIchiH4, handleIchiD1, handleADX;
+int    handleIchiH4, handleIchiD1, handleADX, handleATR;
 
 bool   signalCloseBarRecorded = false;
 double signalCloseBarHigh     = 0;
@@ -90,9 +93,13 @@ int OnInit()
       if(handleADX == INVALID_HANDLE) { Print("BLAD: ADX"); return INIT_FAILED; }
    }
 
-   PrintFormat("Ichimoku NAS100 H4 EA init. %d/%d/%d MinKumo=%.1f ADX=%d/%.1f MinRR=%.1f Risk=%.1f%%",
+   handleATR = iATR(_Symbol, ENTRY_TF, InpATRPeriod);
+   if(handleATR == INVALID_HANDLE) { Print("BLAD: ATR"); return INIT_FAILED; }
+
+   PrintFormat("Ichimoku H4 EA init. %d/%d/%d MinKumoATR=%.2f FlatATR=%.2f ADX=%d/%.1f MinRR=%.1f Risk=%.1f%% Chikou=%d",
                InpTenkan, InpKijun, InpSenkouB,
-               InpMinKumoWidth, InpADXPeriod, InpADXMin, InpMinRR, InpRiskPercent);
+               InpMinKumoATR, InpKijunFlatATR,
+               InpADXPeriod, InpADXMin, InpMinRR, InpRiskPercent, InpUseChikou);
    return INIT_SUCCEEDED;
 }
 
@@ -102,6 +109,15 @@ void OnDeinit(const int reason)
    if(handleIchiH4 != INVALID_HANDLE) IndicatorRelease(handleIchiH4);
    if(handleIchiD1 != INVALID_HANDLE) IndicatorRelease(handleIchiD1);
    if(handleADX    != INVALID_HANDLE) IndicatorRelease(handleADX);
+   if(handleATR    != INVALID_HANDLE) IndicatorRelease(handleATR);
+}
+
+//+------------------------------------------------------------------+
+double GetATR()
+{
+   double atrArr[];
+   if(CopyBuffer(handleATR, 0, 1, 1, atrArr) <= 0) return 0;
+   return atrArr[0];
 }
 
 //+------------------------------------------------------------------+
@@ -146,9 +162,15 @@ void OnNewBarH4()
 
    double kumoTopH4    = MathMax(spAArr[0], spBArr[0]);
    double kumoBottomH4 = MathMin(spAArr[0], spBArr[0]);
-   double kumoWidth    = MathAbs(spAArr[0] - spBArr[0]) / _Point;
+   double kumoWidth    = MathAbs(spAArr[0] - spBArr[0]); // w cenie
 
-   if(!FilterConsolidation(kumoWidth)) return;
+   double atr = GetATR();
+   if(atr <= 0) {
+      if(InpDebug) Print("FILTR: ATR niedostepne");
+      return;
+   }
+
+   if(!FilterConsolidation(kumoWidth, atr)) return;
 
    if(InpUseUSSession && !IsUSSession()) {
       if(InpDebug) Print("FILTR: poza sesja US");
@@ -171,7 +193,7 @@ void OnNewBarH4()
       bool crossAboveKumo  = crossBuy && (tArr[0] > kumoTopH4);
       bool crossInKumo     = crossBuy && (tArr[0] >= kumoBottomH4) && (tArr[0] <= kumoTopH4);
       bool breakoutBuy     = (closeH4_1 > kumoTopH4) && (closeH4_2 <= kumoTopH4);
-      bool chikouBuy       = (closeH4_1 > closeBack);
+      bool chikouBuy       = !InpUseChikou || (closeH4_1 > closeBack);
 
       if((crossAboveKumo || crossInKumo || breakoutBuy) && chikouBuy)
          buySignal = true;
@@ -185,7 +207,7 @@ void OnNewBarH4()
       bool crossBelowKumo  = crossSell && (tArr[0] < kumoBottomH4);
       bool crossInKumo     = crossSell && (tArr[0] >= kumoBottomH4) && (tArr[0] <= kumoTopH4);
       bool breakoutSell    = (closeH4_1 < kumoBottomH4) && (closeH4_2 >= kumoBottomH4);
-      bool chikouSell      = (closeH4_1 < closeBack);
+      bool chikouSell      = !InpUseChikou || (closeH4_1 < closeBack);
 
       if((crossBelowKumo || crossInKumo || breakoutSell) && chikouSell)
          sellSignal = true;
@@ -201,29 +223,37 @@ void OnNewBarH4()
 //+------------------------------------------------------------------+
 //| Filtr konsolidacji                                               |
 //+------------------------------------------------------------------+
-bool FilterConsolidation(double kumoWidthPoints)
+bool FilterConsolidation(double kumoWidth, double atr)
 {
-   if(kumoWidthPoints < InpMinKumoWidth) {
-      if(InpDebug) PrintFormat("FILTR: chmura za waska %.1f < %.1f", kumoWidthPoints, InpMinKumoWidth);
+   // 1. Szerokosc chmury w stosunku do ATR (uniwersalnie na kazdym instrumencie)
+   if(InpMinKumoATR > 0 && kumoWidth < InpMinKumoATR * atr) {
+      if(InpDebug) PrintFormat("FILTR: chmura za waska %.4f < %.4f (ATR=%.4f * %.2f)",
+                               kumoWidth, InpMinKumoATR * atr, atr, InpMinKumoATR);
       return false;
    }
 
-   double kijunArr[];
-   if(CopyBuffer(handleIchiH4, 1, 1, InpKijunFlatBars + 1, kijunArr) <= 0) return false;
-   ArraySetAsSeries(kijunArr, true);
+   // 2. Kijun "flat" - prog skalowany ATR
+   if(InpKijunFlatBars > 0 && InpKijunFlatATR > 0) {
+      double kijunArr[];
+      if(CopyBuffer(handleIchiH4, 1, 1, InpKijunFlatBars + 1, kijunArr) <= 0) return false;
+      ArraySetAsSeries(kijunArr, true);
 
-   bool kijunFlat = true;
-   for(int i = 1; i <= InpKijunFlatBars; i++) {
-      if(MathAbs(kijunArr[0] - kijunArr[i]) > _Point * 5) {
-         kijunFlat = false;
-         break;
+      double flatThreshold = InpKijunFlatATR * atr;
+      bool kijunFlat = true;
+      for(int i = 1; i <= InpKijunFlatBars; i++) {
+         if(MathAbs(kijunArr[0] - kijunArr[i]) > flatThreshold) {
+            kijunFlat = false;
+            break;
+         }
+      }
+      if(kijunFlat) {
+         if(InpDebug) PrintFormat("FILTR: Kijun plaski (prog %.4f, ATR=%.4f)",
+                                  flatThreshold, atr);
+         return false;
       }
    }
-   if(kijunFlat) {
-      if(InpDebug) PrintFormat("FILTR: Kijun plaski %d swiec", InpKijunFlatBars);
-      return false;
-   }
 
+   // 3. ADX
    if(InpUseADX) {
       double adxArr[];
       if(CopyBuffer(handleADX, 0, 1, 2, adxArr) <= 0) return false;
