@@ -259,6 +259,72 @@ Jeżeli `InpUseAutoLot = false`, używany jest stały lot `InpFixedLot`.
 | `InpExitOnCloudBreak` | `true` | exit za chmurą |
 | `InpCooldownBarsAfterLoss` | `2` | pauza po stracie (świece H4) |
 
+## 11.A Multi-Timeframe (H1) i Strong Momentum — odpowiedź na opóźnienie Ichimoku H4
+
+### Problem
+Ichimoku H4 ma wbudowane opóźnienie:
+- Tenkan = 9 świec H4 = 36h danych
+- Kijun  = 26 świec H4 = ~4 dni danych
+- Future Kumo = projekcja 26 świec = ~4 dni „pamięci" trendu
+
+W praktyce: gdy rynek robi **gwałtowne odwrócenie** (np. silny spadek 19.03), wszystkie te linie reagują z opóźnieniem 1–4 świec H4 (4–16 godzin). Tracimy:
+- timing wejścia w nowy trend (np. 3.04 → 13.04 zamiast od razu),
+- czas wyjścia z bieżącej pozycji (np. zostajemy w longu w trakcie ostrego spadku 19.03).
+
+### Rozwiązanie 1: Strong Momentum Exit (counter-bar)
+
+Niezależnie od Ichimoku, EA monitoruje **siłę bieżącej świecy H4**. Jeśli:
+- zakres świecy ≥ `InpMomentumATRMult × ATR` (domyślnie 1.5×ATR), **i**
+- ciało świecy ≥ `InpMomentumBodyPct × zakres` (domyślnie 55%), **i**
+- świeca jest **przeciwna** do otwartej pozycji,
+
+→ pozycja jest natychmiast zamykana, bez czekania na SL/Kijun trail.
+
+To odpowiedź na sytuację 19.03: gdy pojawia się masywna czerwona świeca o zakresie 2×ATR, EA wychodzi z longa nawet jeśli formalny TK Cross H4 jeszcze się nie utworzył.
+
+Parametry:
+
+| Parametr | Domyślnie | Opis |
+|---|---|---|
+| `InpUseStrongMomentumExit` | `true` | Włącz exit na silny counter-bar |
+| `InpMomentumATRMult` | `1.5` | Min. zakres świecy w ATR |
+| `InpMomentumBodyPct` | `0.55` | Min. ciało / zakres |
+| `InpMomentumOnNewBarOnly` | `false` | `true` = tylko na zamkniętej świecy (wolniejsze, mniej fałszywych) |
+
+### Rozwiązanie 2: Lower-TF (H1) reverse TK Cross — szybszy EXIT
+
+EA tworzy drugi handle Ichimoku na **niższym TF** (domyślnie H1). H1 reaguje 4× szybciej niż H4. Jeśli mamy long, a na H1 wystąpi świeży **niedźwiedzi TK Cross** w ciągu ostatnich `InpLowerTFExitLookback` świec H1 — pozycja jest zamykana.
+
+Parametry:
+
+| Parametr | Domyślnie | Opis |
+|---|---|---|
+| `InpUseLowerTF` | `true` | Włącz drugi handle Ichimoku |
+| `InpLowerTF` | `PERIOD_H1` | Niższy TF (M30 = jeszcze szybciej, M15 = bardzo nerwowo) |
+| `InpLowerTFExitOnTKCross` | `true` | Exit na odwrotny TK Cross na LowerTF |
+| `InpLowerTFExitLookback` | `2` | Lookback dla TK Cross na LowerTF |
+
+### Rozwiązanie 3 (opt-in): Lower-TF Early Entry — wcześniejsze WEJŚCIE
+
+Tryb domyślnie **wyłączony** (bo zwiększa frekwencję sygnałów, część może być fałszywa). Włącz, jeśli chcesz łapać początki trendów wcześniej:
+
+`InpLowerTFEarlyEntry = true`
+
+Logika:
+- H4 potwierdza trend (cena > Kumo, TS > KS, slope KS rośnie / odwrotnie dla short),
+- na LowerTF (H1) pojawia się **świeży TK Cross zgodny z trendem H4**,
+- EA otwiera pozycję od razu, bez czekania na zamknięcie świecy H4.
+
+To dokładnie odpowiedź na sytuację 3.04 → 13.04: jeśli na H1 już 3.04 wystąpił byczy TK Cross, a H4 potwierdzała trend bazowy, EA wszedłby ~10 dni wcześniej.
+
+| Parametr | Domyślnie | Opis |
+|---|---|---|
+| `InpLowerTFEarlyEntry` | `false` | Włącz wczesne wejście na H1 |
+| `InpLowerTFEntryLookback` | `2` | Lookback TK Cross H1 (entry) |
+| `InpLowerTFRequireH4Trend` | `true` | Wymagaj potwierdzenia trendu H4 |
+
+⚠️ Po włączeniu **rób backtest osobno** — to istotnie zmienia profil ryzyka.
+
 ## 11. Diagnostyka — DLACZEGO EA nie wszedł w danym miejscu
 
 W wersji **1.11** dodano tryb diagnostyczny:

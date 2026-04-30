@@ -10,9 +10,16 @@ dla indeksu **US30** (Dow Jones 30 CFD) na interwale **H4**, dla brokera
 - [`MQL5/Experts/Ichimoku_US30_H4_BossaFX.mq5`](MQL5/Experts/Ichimoku_US30_H4_BossaFX.mq5) — Expert Advisor (kompilowalny w MetaEditor 5).
 - [`docs/STRATEGIA.md`](docs/STRATEGIA.md) — pełna dokumentacja strategii: warunki wejścia, SL/TP, autolot, filtry, parametry.
 
-## Co potrafi EA (v1.11)
+## Co potrafi EA (v1.12)
 
-> **Nowość v1.11**: tryb **diagnostyczny** (`InpVerboseDiagnostics=true`) — EA loguje w Journal dokładny powód odrzucenia sygnału na każdej zamkniętej świecy H4. Plus opcjonalne strzałki na wykresie (`InpDrawSignalArrows`, `InpDrawRejectedDots`). Patrz `docs/STRATEGIA.md` rozdział 11.
+> **Nowość v1.12** — odpowiedź na opóźnienie Ichimoku H4:
+> - **Strong Momentum Exit**: silny counter-bar (>=1.5×ATR z dużym ciałem) zamyka pozycję natychmiast (np. impuls 19.03).
+> - **Lower-TF (H1) reverse TK Cross**: drugi handle Ichimoku na H1; szybszy EXIT 4× przed sygnałem H4.
+> - **Lower-TF Early Entry** (opt-in): wczesne wejście, gdy H4 potwierdza trend, a H1 daje TK Cross.
+>
+> **v1.11**: tryb **diagnostyczny** (`InpVerboseDiagnostics=true`) — Journal pokazuje powód odrzucenia sygnału + opcjonalne strzałki na wykresie.
+>
+> Patrz `docs/STRATEGIA.md` rozdziały 11.A i 11.
 
 
 - **Dwa tryby wejścia**:

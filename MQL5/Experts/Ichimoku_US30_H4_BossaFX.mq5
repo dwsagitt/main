@@ -8,7 +8,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Cursor Cloud Agent - 2026"
 #property link      "https://bossafx.pl"
-#property version   "1.11"
+#property version   "1.12"
 #property strict
 #property description "Pełna strategia Ichimoku dla US30 H4 (BossaFX) z autolotem"
 
@@ -105,6 +105,21 @@ input bool    InpAllowHedge        = false;           // Zezwól na pozycje prze
 input int     InpSlippagePoints    = 30;              // Maks. poślizg [pkt]
 input int     InpCooldownBarsAfterLoss = 2;           // Cooldown w słupkach po stratnej transakcji (0 = brak)
 
+input group "=== Multi-Timeframe (LowerTF) ==="
+input bool    InpUseLowerTF        = true;            // Uzywaj nizszego TF do wczesniejszych decyzji
+input ENUM_TIMEFRAMES InpLowerTF   = PERIOD_H1;       // Nizszy TF (zalecane H1 dla H4)
+input bool    InpLowerTFExitOnTKCross = true;         // EXIT: zamknij gdy LowerTF da odwrotny TK Cross
+input int     InpLowerTFExitLookback = 2;             // Lookback dla TK Cross na LowerTF (exit)
+input bool    InpLowerTFEarlyEntry = false;           // ENTRY: wczesne wejscie na LowerTF TK Cross (w potw. trendzie H4)
+input int     InpLowerTFEntryLookback = 2;            // Lookback dla TK Cross na LowerTF (entry)
+input bool    InpLowerTFRequireH4Trend = true;        // Wczesne wejscie tylko gdy H4 potwierdza trend (cena vs Kumo + slope)
+
+input group "=== Strong Momentum Exit (counter-bar) ==="
+input bool    InpUseStrongMomentumExit = true;        // Zamknij pozycje gdy pojawi sie silny counter-bar
+input double  InpMomentumATRMult   = 1.5;             // Zakres swiecy >= ATR * X (1.5 = silny ruch)
+input double  InpMomentumBodyPct   = 0.55;            // Cialo / zakres >= X (0.55 = wyrazne cialo)
+input bool    InpMomentumOnNewBarOnly = false;        // true = sprawdzaj na zamknieciu swiecy; false = na biezacej
+
 input group "=== Diagnostyka ==="
 input bool    InpVerboseDiagnostics = false;          // Loguj DLACZEGO sygnal nie zaszedl (Journal)
 input bool    InpDrawSignalArrows  = false;           // Rysuj strzalki na wykresie dla zaakceptowanych sygnalow
@@ -114,6 +129,7 @@ input bool    InpDrawRejectedDots  = false;           // Rysuj male krzyzyki dla
 // ZMIENNE GLOBALNE
 //==================================================================
 int      ichi_handle = INVALID_HANDLE;
+int      ichi_ltf_handle = INVALID_HANDLE; // LowerTF (np. H1)
 int      atr_handle  = INVALID_HANDLE;
 string   gSymbol     = "";
 datetime gLastBarTime = 0;
@@ -162,6 +178,16 @@ int OnInit()
       return(INIT_FAILED);
    }
 
+   if(InpUseLowerTF)
+   {
+      ichi_ltf_handle = iIchimoku(gSymbol, InpLowerTF, InpTenkan, InpKijun, InpSenkouB);
+      if(ichi_ltf_handle == INVALID_HANDLE)
+      {
+         PrintFormat("Błąd tworzenia Ichimoku handle (LowerTF) dla %s", gSymbol);
+         return(INIT_FAILED);
+      }
+   }
+
    atr_handle = iATR(gSymbol, InpATRTimeframe, InpATRPeriod);
    if(atr_handle == INVALID_HANDLE)
    {
@@ -184,8 +210,9 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-   if(ichi_handle != INVALID_HANDLE) IndicatorRelease(ichi_handle);
-   if(atr_handle  != INVALID_HANDLE) IndicatorRelease(atr_handle);
+   if(ichi_handle     != INVALID_HANDLE) IndicatorRelease(ichi_handle);
+   if(ichi_ltf_handle != INVALID_HANDLE) IndicatorRelease(ichi_ltf_handle);
+   if(atr_handle      != INVALID_HANDLE) IndicatorRelease(atr_handle);
 }
 
 //+------------------------------------------------------------------+
@@ -198,6 +225,20 @@ bool IsNewBarH4()
    if(t[0] != gLastBarTime)
    {
       gLastBarTime = t[0];
+      return true;
+   }
+   return false;
+}
+
+datetime gLastBarTimeLTF = 0;
+bool IsNewBarLTF()
+{
+   if(!InpUseLowerTF) return false;
+   datetime t[];
+   if(CopyTime(gSymbol, InpLowerTF, 0, 1, t) <= 0) return false;
+   if(t[0] != gLastBarTimeLTF)
+   {
+      gLastBarTimeLTF = t[0];
       return true;
    }
    return false;
@@ -299,14 +340,15 @@ int PriceVsCloud(double close, double senkouA, double senkouB)
 //| Wykrycie świeżego TK Cross (Tenkan x Kijun)                      |
 //| zwraca: 1 = byczy, -1 = niedźwiedzi, 0 = brak                    |
 //+------------------------------------------------------------------+
-int DetectTKCross(int lookback)
+int DetectTKCrossOnHandle(int handle, int lookback)
 {
+   if(handle == INVALID_HANDLE) return 0;
    double tBuf[], kBuf[];
    int need = lookback + 2;
    ArraySetAsSeries(tBuf, true);
    ArraySetAsSeries(kBuf, true);
-   if(CopyBuffer(ichi_handle, IDX_TENKAN, 1, need, tBuf) < need) return 0;
-   if(CopyBuffer(ichi_handle, IDX_KIJUN,  1, need, kBuf) < need) return 0;
+   if(CopyBuffer(handle, IDX_TENKAN, 1, need, tBuf) < need) return 0;
+   if(CopyBuffer(handle, IDX_KIJUN,  1, need, kBuf) < need) return 0;
 
    for(int i = 0; i < lookback; i++)
    {
@@ -317,6 +359,9 @@ int DetectTKCross(int lookback)
    }
    return 0;
 }
+
+int DetectTKCross(int lookback) { return DetectTKCrossOnHandle(ichi_handle, lookback); }
+int DetectTKCrossLTF(int lookback) { return DetectTKCrossOnHandle(ichi_ltf_handle, lookback); }
 
 //+------------------------------------------------------------------+
 //| Pobierz cenę close N słupków wstecz                              |
@@ -806,6 +851,46 @@ void TryOpen(int dir, string kind)
 }
 
 //+------------------------------------------------------------------+
+//| Detekcja silnego counter-bara (impuls przeciwny)                 |
+//| dir = aktywny kierunek pozycji (1=BUY, -1=SELL)                  |
+//| Zwraca true gdy ostatnia (lub biezaca) swieca wskazuje silny     |
+//| ruch przeciwny do pozycji                                        |
+//+------------------------------------------------------------------+
+bool DetectStrongCounterBar(int posDir)
+{
+   if(!InpUseStrongMomentumExit) return false;
+
+   int idx = InpMomentumOnNewBarOnly ? 1 : 0; // 0=biezaca, 1=zamknieta
+   double op[], hi[], lo[], cl[];
+   ArraySetAsSeries(op, true);
+   ArraySetAsSeries(hi, true);
+   ArraySetAsSeries(lo, true);
+   ArraySetAsSeries(cl, true);
+   if(CopyOpen (gSymbol, PERIOD_H4, idx, 1, op) <= 0) return false;
+   if(CopyHigh (gSymbol, PERIOD_H4, idx, 1, hi) <= 0) return false;
+   if(CopyLow  (gSymbol, PERIOD_H4, idx, 1, lo) <= 0) return false;
+   if(CopyClose(gSymbol, PERIOD_H4, idx, 1, cl) <= 0) return false;
+
+   double atr = GetATR(1);
+   if(atr <= 0) return false;
+
+   double range = hi[0] - lo[0];
+   double body  = MathAbs(cl[0] - op[0]);
+   if(range <= 0) return false;
+
+   bool bigRange = (range >= InpMomentumATRMult * atr);
+   bool bigBody  = (body  >= InpMomentumBodyPct * range);
+
+   bool bearishBar = (cl[0] < op[0]); // czerwona swieca
+   bool bullishBar = (cl[0] > op[0]); // zielona swieca
+
+   if(posDir == 1  && bigRange && bigBody && bearishBar) return true;
+   if(posDir == -1 && bigRange && bigBody && bullishBar) return true;
+
+   return false;
+}
+
+//+------------------------------------------------------------------+
 //| Zarządzanie pozycjami: BE, trailing, exit                        |
 //+------------------------------------------------------------------+
 void ManagePositions()
@@ -829,19 +914,42 @@ void ManagePositions()
 
       ulong  ticket = pos.Ticket();
       bool   isBuy  = (pos.PositionType() == POSITION_TYPE_BUY);
+      int    posDir = isBuy ? 1 : -1;
       double open   = pos.PriceOpen();
       double curSL  = pos.StopLoss();
       double curTP  = pos.TakeProfit();
       double price  = isBuy ? bid : ask;
 
-      // === Wyjście: odwrotny TK Cross ===
+      // === Wyjście: STRONG MOMENTUM (counter-bar) ===
+      if(InpUseStrongMomentumExit && DetectStrongCounterBar(posDir))
+      {
+         trade.PositionClose(ticket);
+         PrintFormat("Zamknieto #%I64u: STRONG MOMENTUM counter-bar (range>=%.1fxATR, body>=%.0f%%)",
+                     ticket, InpMomentumATRMult, InpMomentumBodyPct * 100);
+         continue;
+      }
+
+      // === Wyjście: LowerTF reverse TK Cross (szybsza reakcja niz H4) ===
+      if(InpUseLowerTF && InpLowerTFExitOnTKCross && ichi_ltf_handle != INVALID_HANDLE)
+      {
+         int ltfCross = DetectTKCrossLTF(InpLowerTFExitLookback);
+         if((isBuy && ltfCross == -1) || (!isBuy && ltfCross == 1))
+         {
+            trade.PositionClose(ticket);
+            PrintFormat("Zamknieto #%I64u: LowerTF (%s) odwrotny TK Cross",
+                        ticket, EnumToString(InpLowerTF));
+            continue;
+         }
+      }
+
+      // === Wyjście: odwrotny TK Cross (H4) ===
       if(InpExitOnTKCross)
       {
          int cross = DetectTKCross(2);
          if((isBuy && cross == -1) || (!isBuy && cross == 1))
          {
             trade.PositionClose(ticket);
-            PrintFormat("Zamknięto #%I64u: odwrotny TK Cross", ticket);
+            PrintFormat("Zamknięto #%I64u: odwrotny TK Cross (H4)", ticket);
             continue;
          }
       }
@@ -984,6 +1092,68 @@ bool InCooldownAfterLoss()
 }
 
 //+------------------------------------------------------------------+
+//| Czy H4 potwierdza trend kierunku dir (do early-entry na LowerTF) |
+//+------------------------------------------------------------------+
+bool H4TrendConfirms(int dir)
+{
+   double t1, k1, sa1, sb1, ch1;
+   if(!GetIchimoku(1, t1, k1, sa1, sb1, ch1)) return false;
+
+   double close1 = CloseAt(1);
+   if(close1 == 0) return false;
+
+   int pvc = PriceVsCloud(close1, sa1, sb1);
+   if(pvc != dir) return false;
+
+   bool tAboveCloud = (MathMin(t1,k1) > MathMax(sa1, sb1));
+   bool tBelowCloud = (MathMax(t1,k1) < MathMin(sa1, sb1));
+   if(dir == 1  && !tAboveCloud) return false;
+   if(dir == -1 && !tBelowCloud) return false;
+
+   if(InpUseSlopeFilter)
+   {
+      int slopeK = LineSlope(IDX_KIJUN, InpSlopeLookback);
+      if(InpRequireKijunSlope)
+      {
+         if(dir == 1  && slopeK < 0) return false;
+         if(dir == -1 && slopeK > 0) return false;
+      }
+   }
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Wczesne wejscie na LowerTF TK Cross (gdy H4 potwierdza trend)    |
+//+------------------------------------------------------------------+
+void TryLowerTFEarlyEntry()
+{
+   if(!InpUseLowerTF || !InpLowerTFEarlyEntry) return;
+   if(ichi_ltf_handle == INVALID_HANDLE) return;
+
+   if(!InSession())   return;
+   if(FridayBlock())  return;
+   if(InCooldownAfterLoss()) return;
+
+   int totalPos = CountPositions();
+   if(totalPos >= InpMaxPositions && !InpAllowHedge) return;
+
+   int ltfCross = DetectTKCrossLTF(InpLowerTFEntryLookback);
+   if(ltfCross == 0) return;
+
+   if(InpLowerTFRequireH4Trend && !H4TrendConfirms(ltfCross)) return;
+
+   if(!InpAllowHedge)
+   {
+      if(ltfCross == 1  && CountPositions(1) > 0) return;
+      if(ltfCross == -1 && CountPositions(0) > 0) return;
+   }
+
+   PrintFormat("LTF EARLY ENTRY: %s na %s TK Cross (H4 trend potwierdzony)",
+               (ltfCross==1?"BUY":"SELL"), EnumToString(InpLowerTF));
+   TryOpen(ltfCross, "LTF_EARLY");
+}
+
+//+------------------------------------------------------------------+
 //| OnTick                                                           |
 //+------------------------------------------------------------------+
 void OnTick()
@@ -991,6 +1161,10 @@ void OnTick()
    if(!sym.RefreshRates()) return;
 
    ManagePositions();
+
+   // === Wczesne wejscie na LowerTF (np. H1) - tylko na nowej swiecy LTF
+   if(InpUseLowerTF && InpLowerTFEarlyEntry && IsNewBarLTF())
+      TryLowerTFEarlyEntry();
 
    if(!IsNewBarH4()) return;
 
@@ -1005,14 +1179,12 @@ void OnTick()
    int signal = CheckEntrySignal(kind);
    if(signal == 0) return;
 
-   // One-per-bar dotyczy tylko trybu TK Cross (pullbacki mogą wystąpić tuż
-   // po zamknięciu poprzedniej pozycji na tym samym słupku)
    if(InpOnePositionPerBar && kind == "TKCROSS" && gLastTKCrossBar == gLastBarTime) return;
 
    if(!InpAllowHedge)
    {
-      if(signal == 1  && CountPositions(1) > 0) return; // mamy SELL
-      if(signal == -1 && CountPositions(0) > 0) return; // mamy BUY
+      if(signal == 1  && CountPositions(1) > 0) return;
+      if(signal == -1 && CountPositions(0) > 0) return;
    }
 
    TryOpen(signal, kind);
