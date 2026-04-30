@@ -10,6 +10,14 @@ dla indeksu **US30** (Dow Jones 30 CFD) na interwale **H4**, dla brokera
 - [`MQL5/Experts/Ichimoku_US30_H4_BossaFX.mq5`](MQL5/Experts/Ichimoku_US30_H4_BossaFX.mq5) — Expert Advisor (kompilowalny w MetaEditor 5).
 - [`docs/STRATEGIA.md`](docs/STRATEGIA.md) — pełna dokumentacja strategii: warunki wejścia, SL/TP, autolot, filtry, parametry.
 
+## Co potrafi EA (v1.13)
+
+> **Nowość v1.13** — narzędzia do optymalizacji:
+> - **`OnTester()`** z robust fitness function (PF, Recovery, Sharpe, kara za skrajne winrate / małą liczbę transakcji). Tester w trybie „Custom max".
+> - **4 presety .set** w `MQL5/Presets/`: Conservative, Balanced (rekomendowany), Aggressive, Optimize (flagi `Z=1` na 8 parametrach).
+> - **`scripts/sync_to_mt5.bat`** — auto-pull z GitHub + kopia EA + presetów + kompilacja przez `metaeditor64.exe`.
+> - Sekcja 11.B w `docs/STRATEGIA.md`: workflow walk-forward, co optymalizować, sanity check.
+
 ## Co potrafi EA (v1.12)
 
 > **Nowość v1.12** — odpowiedź na opóźnienie Ichimoku H4:

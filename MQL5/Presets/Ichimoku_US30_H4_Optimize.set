@@ -1,0 +1,97 @@
+; Ichimoku US30 H4 BossaFX - preset OPTIMIZATION
+; Bazuje na BALANCED, ale wybrane parametry maja Z=1 (optymalizacja).
+; Format pelny .set MT5: nazwa=wartosc||start||step||stop||Z
+;   Z=1 -> optymalizuj (wykorzystuje start/step/stop)
+;   Z=0 lub brak -> stala wartosc
+;
+; Sugerowany tryb: 'Slow complete algorithm' lub 'Fast genetic-based'
+; Forward: 1/4 albo 1/3 (out-of-sample test)
+; Custom max: tak (uzywa OnTester z robust scoring)
+
+InpSymbol=
+InpMagic=30040026
+InpComment=Ichimoku_H4_Opt
+
+InpTenkan=9||5||1||13||0
+InpKijun=26||20||2||32||0
+InpSenkouB=52
+InpChikouShift=26
+
+InpEnableTKCrossEntry=true
+InpEnablePullbackEntry=true
+InpPullbackOnTenkan=true
+InpPullbackOnKijun=true
+InpPullbackLookback=6||4||1||10||1
+InpPullbackTouchTolATR=0.25||0.15||0.05||0.5||1
+
+InpUseChikouFilter=true
+InpUseFutureKumoFilter=true
+InpUseKijunFilter=true
+InpRequireTKCross=true
+InpTKCrossLookback=5||3||1||8||1
+InpStrongTKCrossOnly=true
+InpUseSlopeFilter=true
+InpSlopeLookback=3||2||1||5||1
+InpRequireKijunSlope=true
+InpRequireTenkanSlope=false
+
+InpUseSpreadFilter=true
+InpMaxSpreadPoints=80
+InpUseSessionFilter=false
+InpSessionStartHour=8
+InpSessionEndHour=22
+InpAvoidFridayClose=true
+InpFridayCloseHour=20
+
+InpUseAutoLot=true
+InpRiskPercent=1.0||0.5||0.25||1.5||1
+InpFixedLot=0.10
+InpMaxLot=5.0
+InpMinLot=0.0
+InpMaxRiskCapEUR=0.0
+
+InpATRTimeframe=16388
+InpATRPeriod=14
+InpATRMultSL=2.0||1.5||0.25||3.0||1
+InpRR=2.0||1.5||0.25||3.0||1
+InpUseKijunSL=true
+InpUseCloudSL=true
+InpSLBufferPoints=50
+InpMinStopPoints=200
+
+InpUseLowerTF=true
+InpLowerTF=16385
+InpLowerTFExitOnTKCross=true
+InpLowerTFExitLookback=2
+InpLowerTFEarlyEntry=false
+InpLowerTFEntryLookback=2
+InpLowerTFRequireH4Trend=true
+
+InpUseStrongMomentumExit=true
+InpMomentumATRMult=1.5||1.2||0.1||2.0||1
+InpMomentumBodyPct=0.55||0.45||0.05||0.7||1
+InpMomentumOnNewBarOnly=false
+
+InpUseKijunTrailing=true
+InpKijunTrailBuffer=100||50||25||150||0
+InpUseTenkanTrailing=false
+InpTenkanTrailBuffer=50
+InpTenkanTrailAfterPartial=true
+InpExitOnTKCross=true
+InpExitOnCloudBreak=true
+InpUseBreakEven=true
+InpBreakEvenAtR=1.0||0.5||0.25||1.5||0
+InpBreakEvenOffsetPt=30
+InpUsePartialTP=true
+InpPartialTPAtR=1.0||0.5||0.25||1.5||0
+InpPartialTPPercent=50.0
+
+InpMaxPositions=1
+InpOnePositionPerBar=true
+InpAllowHedge=false
+InpSlippagePoints=30
+InpCooldownBarsAfterLoss=2||0||1||4||0
+
+InpVerboseDiagnostics=false
+InpDrawSignalArrows=false
+InpDrawRejectedDots=false

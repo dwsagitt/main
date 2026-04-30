@@ -8,7 +8,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Cursor Cloud Agent - 2026"
 #property link      "https://bossafx.pl"
-#property version   "1.12"
+#property version   "1.13"
 #property strict
 #property description "Pełna strategia Ichimoku dla US30 H4 (BossaFX) z autolotem"
 
@@ -1230,6 +1230,58 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
 
    PrintFormat("Zamknieto pozycje #%I64u: profit=%.2f, cooldown=%s",
                posId, profit, (profit < 0 ? "TAK" : "NIE"));
+}
+
+//+------------------------------------------------------------------+
+//| OnTester - custom fitness function dla optymalizacji w MT5       |
+//|                                                                  |
+//| Filozofia: nie maksymalizujemy samego zysku - maksymalizujemy    |
+//| ROBUST profil:                                                   |
+//|   - Profit Factor (>1.3 obowiazkowo, >1.7 nagroda)               |
+//|   - Min liczba transakcji (>=20, kara za zbyt malo)              |
+//|   - Recovery Factor = NetProfit / MaxDD                          |
+//|   - Sharpe Ratio                                                 |
+//|   - Win % w sensownym przedziale (40-65%, kara za skrajne)       |
+//|                                                                  |
+//| Aby uzyc: w Testerze ustaw 'Optymalizacja' -> 'Custom max'.      |
+//+------------------------------------------------------------------+
+double OnTester()
+{
+   double netProfit = TesterStatistics(STAT_PROFIT);
+   double profitFct = TesterStatistics(STAT_PROFIT_FACTOR);
+   double recovery  = TesterStatistics(STAT_RECOVERY_FACTOR);
+   double sharpe    = TesterStatistics(STAT_SHARPE_RATIO);
+   double maxDD     = TesterStatistics(STAT_EQUITY_DDREL_PERCENT); // % DD equity
+   int    trades    = (int)TesterStatistics(STAT_TRADES);
+   double profitsCnt = TesterStatistics(STAT_PROFIT_TRADES);
+   double winRate   = (trades > 0) ? (profitsCnt / trades) * 100.0 : 0.0;
+
+   if(trades < 20) return 0.0;
+   if(profitFct < 1.3) return 0.0;
+   if(netProfit <= 0) return 0.0;
+   if(maxDD > 25.0) return 0.0;
+
+   double pfBonus = MathPow(MathMax(profitFct - 1.0, 0.0), 1.5);
+   double recBonus = MathMax(recovery, 0.0);
+   double sharpBonus = MathMax(sharpe, 0.0);
+
+   double winPenalty = 1.0;
+   if(winRate < 40.0) winPenalty = winRate / 40.0;       // za niskie - kara
+   if(winRate > 70.0) winPenalty = (100.0 - winRate)/30.0; // 70-100 -> 1.0..0.0 (overfitting)
+
+   double tradesBonus = MathMin(1.0, (double)trades / 50.0);
+
+   double score = netProfit
+                * (1.0 + pfBonus)
+                * (1.0 + recBonus * 0.5)
+                * (1.0 + sharpBonus * 0.3)
+                * winPenalty
+                * (0.5 + 0.5 * tradesBonus);
+
+   PrintFormat("OnTester: trades=%d, NP=%.2f, PF=%.2f, RF=%.2f, Sharpe=%.2f, DD=%.2f%%, Win=%.1f%% -> SCORE=%.2f",
+               trades, netProfit, profitFct, recovery, sharpe, maxDD, winRate, score);
+
+   return score;
 }
 
 //+------------------------------------------------------------------+

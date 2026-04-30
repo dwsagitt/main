@@ -259,6 +259,82 @@ Jeżeli `InpUseAutoLot = false`, używany jest stały lot `InpFixedLot`.
 | `InpExitOnCloudBreak` | `true` | exit za chmurą |
 | `InpCooldownBarsAfterLoss` | `2` | pauza po stracie (świece H4) |
 
+## 11.B Optymalizacja parametrów (walk-forward, robust scoring)
+
+### Custom fitness function — `OnTester`
+
+W v1.13 EA zawiera funkcję `OnTester()`, którą MT5 wywołuje na końcu każdego runa optymalizacji. Zamiast maksymalizować surowy zysk (co prowadzi do overfittingu — kombinacja z 5 transakcjami i 100% winrate „wygrywa", ale jest bezużyteczna live), funkcja ocenia **robust profil**:
+
+```
+score = NetProfit
+      × (1 + (PF - 1)^1.5)              // premia za wysokie PF
+      × (1 + 0.5 × RecoveryFactor)      // premia za niski DD vs zysk
+      × (1 + 0.3 × Sharpe)
+      × winRatePenalty                  // kara <40% i >70%
+      × tradesBonus                     // kara <50 trades
+```
+
+Twarde filtry (zwracają 0 = run odrzucony):
+- `trades < 20`
+- `PF < 1.3`
+- `NetProfit ≤ 0`
+- `MaxDD% > 25%`
+
+**Aby użyć**: w Testerze strategii ustaw **Optymalizacja → Custom max**.
+
+### Walk-forward — workflow rekomendowany
+
+Bez walk-forward każda optymalizacja jest curve-fittingiem.
+
+| Faza | Zakres | Co robisz |
+|---|---|---|
+| **In-Sample (IS)** | np. 2022-01-01 do 2025-06-30 | Optymalizacja z `Custom max` |
+| **Out-of-Sample (OOS)** | 2025-07-01 do 2025-12-31 | Forward test (MT5 robi automatycznie z opcją Forward = 1/4) |
+| **Walidacja końcowa** | 2026-01-01 do dziś | Backtest na świeżych danych z najlepszymi parametrami z IS |
+
+W MT5 Tester strategii:
+1. **Date** → ustaw zakres IS+OOS razem.
+2. **Forward** → wybierz `1/4` (1 kwartał OOS) lub `1/3`.
+3. **Optymalizacja** → `Slow complete algorithm` (100% kombinacji) dla małej liczby parametrów lub `Fast genetic-based` dla wielu.
+4. **Custom max** → tak.
+
+Po zakończeniu zobaczysz **dwie kolumny wyników**: IS i Forward. Akceptujemy **tylko** kombinacje, które:
+- są w top 20% IS,
+- mają OOS Profit Factor ≥ 70% wartości IS,
+- nie mają OOS DD > 1.5× IS DD.
+
+### Co optymalizować (i co NIE)
+
+**Optymalizować** (w pliku `Ichimoku_US30_H4_Optimize.set` flagą `Z=1`):
+
+| Parametr | Zakres | Krok | Uzasadnienie |
+|---|---|---|---|
+| `InpATRMultSL` | 1.5 – 3.0 | 0.25 | Ustawienie SL |
+| `InpRR` | 1.5 – 3.0 | 0.25 | Risk:Reward |
+| `InpRiskPercent` | 0.5 – 1.5 | 0.25 | Wielkość pozycji (wpływa na DD) |
+| `InpTKCrossLookback` | 3 – 8 | 1 | Świeżość TK Cross |
+| `InpPullbackLookback` | 4 – 10 | 1 | Okno pullback |
+| `InpPullbackTouchTolATR` | 0.15 – 0.50 | 0.05 | Tolerancja dotknięcia |
+| `InpSlopeLookback` | 2 – 5 | 1 | Okno detekcji slope |
+| `InpMomentumATRMult` | 1.2 – 2.0 | 0.1 | Próg silnego baru |
+| `InpMomentumBodyPct` | 0.45 – 0.70 | 0.05 | Min. ciało baru |
+
+**NIE optymalizować** (zostawić klasyczne wartości Ichimoku albo zdefiniowane „strukturalne"):
+
+- `InpTenkan`, `InpKijun`, `InpSenkouB` — to klasyczne 9/26/52, optymalizacja niszczy filozofię Ichimoku.
+- `InpUseChikouFilter`, `InpUseFutureKumoFilter` itp. — zostają zdefiniowane „włączone/wyłączone" świadomie.
+- `InpMagic`, parametry sesji.
+
+### Ile prób = ile kombinacji
+
+Dla 8 parametrów po 5 wartości = 5⁸ = 390 625 kombinacji. Genetic na zwykłym PC robi ~5000 prób w 1-3h, co wystarcza by znaleźć dobre minimum lokalne. **Nie celuj w testowanie wszystkich** — to overfitting.
+
+### Po optymalizacji — sanity check
+
+1. Equity curve powinna iść z **lewego dolnego do prawego górnego rogu**. Schodki, długie plateau, nagłe „ucieczki" w górę = overfitting.
+2. **Stress test**: zmień losowo 1 parametr o ±20% — wynik powinien zostać w 80% zysku. Jeśli nie — przeoptymalizowane.
+3. **Inny instrument**: wgraj te same parametry na innym indeksie (NDX, SPX). Jeśli daje 0 lub stratę — strategia oparta o przypadkowe nawyki tego konkretnego US30 w tym konkretnym oknie.
+
 ## 11.A Multi-Timeframe (H1) i Strong Momentum — odpowiedź na opóźnienie Ichimoku H4
 
 ### Problem
