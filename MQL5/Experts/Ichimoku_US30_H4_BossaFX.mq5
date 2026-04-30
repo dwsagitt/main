@@ -8,7 +8,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Cursor Cloud Agent - 2026"
 #property link      "https://bossafx.pl"
-#property version   "1.10"
+#property version   "1.11"
 #property strict
 #property description "Pełna strategia Ichimoku dla US30 H4 (BossaFX) z autolotem"
 
@@ -104,6 +104,11 @@ input bool    InpOnePositionPerBar = true;            // Tylko 1 sygnał na słu
 input bool    InpAllowHedge        = false;           // Zezwól na pozycje przeciwne (hedge)
 input int     InpSlippagePoints    = 30;              // Maks. poślizg [pkt]
 input int     InpCooldownBarsAfterLoss = 2;           // Cooldown w słupkach po stratnej transakcji (0 = brak)
+
+input group "=== Diagnostyka ==="
+input bool    InpVerboseDiagnostics = false;          // Loguj DLACZEGO sygnal nie zaszedl (Journal)
+input bool    InpDrawSignalArrows  = false;           // Rysuj strzalki na wykresie dla zaakceptowanych sygnalow
+input bool    InpDrawRejectedDots  = false;           // Rysuj male krzyzyki dla odrzuconych setupow (debug)
 
 //==================================================================
 // ZMIENNE GLOBALNE
@@ -402,6 +407,63 @@ double CalculateLot(double slDistancePoints)
 }
 
 //+------------------------------------------------------------------+
+//| VLog - logowanie diagnostyczne (tylko gdy verbose=true)          |
+//+------------------------------------------------------------------+
+void VLog(string msg)
+{
+   if(!InpVerboseDiagnostics) return;
+   datetime t[];
+   if(CopyTime(gSymbol, PERIOD_H4, 1, 1, t) > 0)
+      PrintFormat("[%s] %s", TimeToString(t[0], TIME_DATE|TIME_MINUTES), msg);
+   else
+      Print(msg);
+}
+
+//+------------------------------------------------------------------+
+//| Rysowanie strzalek na wykresie (debug / wizualizacja)            |
+//+------------------------------------------------------------------+
+void DrawSignalArrow(int dir, string kind, bool accepted)
+{
+   if(!accepted && !InpDrawRejectedDots) return;
+   if(accepted  && !InpDrawSignalArrows) return;
+
+   datetime t[];
+   double   p[];
+   if(CopyTime(gSymbol, PERIOD_H4, 1, 1, t) <= 0) return;
+   if(dir == 1 && CopyLow (gSymbol, PERIOD_H4, 1, 1, p) <= 0) return;
+   if(dir == -1 && CopyHigh(gSymbol, PERIOD_H4, 1, 1, p) <= 0) return;
+
+   double pt = SymbolInfoDouble(gSymbol, SYMBOL_POINT);
+   double offset = 200 * pt;
+   double y = (dir == 1) ? p[0] - offset : p[0] + offset;
+
+   string name = StringFormat("Ichi_%s_%s_%I64d", (accepted?"OK":"NO"), kind, (long)t[0]);
+   if(ObjectFind(0, name) >= 0) return;
+
+   int code;
+   color clr;
+   if(accepted)
+   {
+      code = (dir == 1) ? 233 : 234;
+      clr  = (dir == 1) ? clrLime : clrRed;
+   }
+   else
+   {
+      code = 251;
+      clr  = clrGray;
+   }
+
+   if(ObjectCreate(0, name, OBJ_ARROW, 0, t[0], y))
+   {
+      ObjectSetInteger(0, name, OBJPROP_ARROWCODE, code);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+      ObjectSetInteger(0, name, OBJPROP_WIDTH, accepted ? 2 : 1);
+      ObjectSetInteger(0, name, OBJPROP_BACK, false);
+      ObjectSetString (0, name, OBJPROP_TEXT, kind);
+   }
+}
+
+//+------------------------------------------------------------------+
 //| Slope Tenkan / Kijun (1=rośnie, -1=spada, 0=płasko/n-a)          |
 //+------------------------------------------------------------------+
 int LineSlope(int bufferIdx, int lookback)
@@ -480,7 +542,7 @@ int CheckEntrySignal(string &signalKind)
    signalKind = "";
 
    double t1, k1, sa1, sb1, ch1;
-   if(!GetIchimoku(1, t1, k1, sa1, sb1, ch1)) return 0;
+   if(!GetIchimoku(1, t1, k1, sa1, sb1, ch1)) { VLog("ICHI: brak danych"); return 0; }
 
    double futA = (t1 + k1) / 2.0;
    double highArr[], lowArr[];
@@ -492,7 +554,7 @@ int CheckEntrySignal(string &signalKind)
    double ll = lowArr [ArrayMinimum(lowArr,  0, InpSenkouB)];
    double futB = (hh + ll) / 2.0;
 
-   double close1 = CloseAt(1);
+   double close1  = CloseAt(1);
    double close26 = CloseAt(InpChikouShift + 1);
    if(close1 == 0 || close26 == 0) return 0;
 
@@ -521,46 +583,106 @@ int CheckEntrySignal(string &signalKind)
                         (!InpRequireTenkanSlope || slopeT <= 0) &&
                         (slopeK <= 0 || slopeT <= 0));
 
-   bool baseBull = (priceVsCloud == 1) && kijunBull && chikouBull && futureBull && slopeBull;
-   bool baseBear = (priceVsCloud == -1) && kijunBear && chikouBear && futureBear && slopeBear;
-
-   // ------------------------------------------------------------------
-   // [Tryb 1] TK CROSS (breakout)
-   // ------------------------------------------------------------------
-   if(InpEnableTKCrossEntry)
+   // ----- DIAGNOSTYKA: oddzielnie sprawdzamy LONG i SHORT -----
+   for(int dir = 1; dir >= -1; dir -= 2) // 1=BUY, -1=SELL
    {
-      int tkCross = InpRequireTKCross ? DetectTKCross(InpTKCrossLookback) : (t1 > k1 ? 1 : (t1 < k1 ? -1 : 0));
-      bool strongBull = !InpStrongTKCrossOnly || tAboveCloud;
-      bool strongBear = !InpStrongTKCrossOnly || tBelowCloud;
+      bool isBull = (dir == 1);
+      string D = isBull ? "LONG" : "SHORT";
 
-      if(baseBull && tkCross == 1 && strongBull) { signalKind = "TKCROSS"; return 1; }
-      if(baseBear && tkCross == -1 && strongBear) { signalKind = "TKCROSS"; return -1; }
-   }
-
-   // ------------------------------------------------------------------
-   // [Tryb 2] PULLBACK BOUNCE (kontynuacja trendu na dotknięciu TS/KS)
-   // Wymaga aktualnie potwierdzonego trendu (TK po właściwej stronie chmury,
-   // TS i KS rosną/spadają, cena nad/pod chmurą) i świecy potwierdzającej.
-   // ------------------------------------------------------------------
-   if(InpEnablePullbackEntry)
-   {
-      bool trendUp   = baseBull && (t1 > k1) && tAboveCloud;
-      bool trendDown = baseBear && (t1 < k1) && tBelowCloud;
-
-      if(trendUp)
+      // Bazowe filtry trendu
+      if(priceVsCloud != dir)
       {
-         if(InpPullbackOnTenkan && DetectPullbackTouch(1, 'T', InpPullbackLookback, InpPullbackTouchTolATR))
-            { signalKind = "PB_TENKAN"; return 1; }
-         if(InpPullbackOnKijun  && DetectPullbackTouch(1, 'K', InpPullbackLookback, InpPullbackTouchTolATR))
-            { signalKind = "PB_KIJUN";  return 1; }
+         VLog(StringFormat("%s odrzucony: PriceVsCloud (close=%.2f, Kumo[%.2f..%.2f])",
+              D, close1, MathMin(sa1,sb1), MathMax(sa1,sb1)));
+         continue;
       }
-      if(trendDown)
+      bool kFilt = isBull ? kijunBull : kijunBear;
+      if(!kFilt) { VLog(StringFormat("%s odrzucony: Kijun filter (close=%.2f vs Kijun=%.2f)", D, close1, k1)); continue; }
+
+      bool cFilt = isBull ? chikouBull : chikouBear;
+      if(!cFilt) { VLog(StringFormat("%s odrzucony: Chikou (close[1]=%.2f vs close[27]=%.2f)", D, close1, close26)); continue; }
+
+      bool fFilt = isBull ? futureBull : futureBear;
+      if(!fFilt) { VLog(StringFormat("%s odrzucony: FutureKumo (futA=%.2f vs futB=%.2f)", D, futA, futB)); continue; }
+
+      bool sFilt = isBull ? slopeBull : slopeBear;
+      if(!sFilt)
       {
-         if(InpPullbackOnTenkan && DetectPullbackTouch(-1, 'T', InpPullbackLookback, InpPullbackTouchTolATR))
-            { signalKind = "PB_TENKAN"; return -1; }
-         if(InpPullbackOnKijun  && DetectPullbackTouch(-1, 'K', InpPullbackLookback, InpPullbackTouchTolATR))
-            { signalKind = "PB_KIJUN";  return -1; }
+         VLog(StringFormat("%s odrzucony: Slope (Tenkan=%d Kijun=%d, wymagaj_K=%s wymagaj_T=%s)",
+              D, slopeT, slopeK,
+              (InpRequireKijunSlope?"true":"false"),
+              (InpRequireTenkanSlope?"true":"false")));
+         continue;
       }
+
+      // ------ Tryb 1: TK CROSS ------
+      bool tkAccepted = false;
+      if(InpEnableTKCrossEntry)
+      {
+         int tkCross = InpRequireTKCross ? DetectTKCross(InpTKCrossLookback) : (t1 > k1 ? 1 : (t1 < k1 ? -1 : 0));
+         bool strong = !InpStrongTKCrossOnly || (isBull ? tAboveCloud : tBelowCloud);
+
+         if(tkCross == dir && strong)
+         {
+            signalKind = "TKCROSS";
+            DrawSignalArrow(dir, "TKCROSS", true);
+            return dir;
+         }
+         else
+         {
+            if(tkCross != dir)
+               VLog(StringFormat("%s [TKCROSS]: brak swiezego TK Cross w %d swiecach (tkCross=%d)", D, InpTKCrossLookback, tkCross));
+            else if(!strong)
+               VLog(StringFormat("%s [TKCROSS]: TK Cross OK ale nie po wlasciwej stronie chmury (StrongTKCrossOnly=true)", D));
+         }
+      }
+
+      // ------ Tryb 2: PULLBACK ------
+      if(InpEnablePullbackEntry)
+      {
+         bool trendOK = isBull ? (t1 > k1 && tAboveCloud) : (t1 < k1 && tBelowCloud);
+         if(!trendOK)
+         {
+            VLog(StringFormat("%s [PB]: trend nie potwierdzony (T=%.2f K=%.2f tAbove=%s tBelow=%s)",
+                 D, t1, k1, (tAboveCloud?"true":"false"), (tBelowCloud?"true":"false")));
+         }
+         else
+         {
+            // Tenkan touch
+            if(InpPullbackOnTenkan)
+            {
+               if(DetectPullbackTouch(dir, 'T', InpPullbackLookback, InpPullbackTouchTolATR))
+               {
+                  signalKind = "PB_TENKAN";
+                  DrawSignalArrow(dir, "PB_TENKAN", true);
+                  return dir;
+               }
+               else
+               {
+                  VLog(StringFormat("%s [PB_TENKAN]: brak dotkniecia/potwierdzenia TS (lookback=%d, tol=%.2fATR)",
+                       D, InpPullbackLookback, InpPullbackTouchTolATR));
+               }
+            }
+            // Kijun touch
+            if(InpPullbackOnKijun)
+            {
+               if(DetectPullbackTouch(dir, 'K', InpPullbackLookback, InpPullbackTouchTolATR))
+               {
+                  signalKind = "PB_KIJUN";
+                  DrawSignalArrow(dir, "PB_KIJUN", true);
+                  return dir;
+               }
+               else
+               {
+                  VLog(StringFormat("%s [PB_KIJUN]: brak dotkniecia/potwierdzenia KS (lookback=%d, tol=%.2fATR)",
+                       D, InpPullbackLookback, InpPullbackTouchTolATR));
+               }
+            }
+         }
+      }
+
+      // Doszlismy tu - kierunek mial baseTrend OK ale brak setupu
+      DrawSignalArrow(dir, "REJ", false);
    }
 
    return 0;

@@ -10,7 +10,10 @@ dla indeksu **US30** (Dow Jones 30 CFD) na interwale **H4**, dla brokera
 - [`MQL5/Experts/Ichimoku_US30_H4_BossaFX.mq5`](MQL5/Experts/Ichimoku_US30_H4_BossaFX.mq5) — Expert Advisor (kompilowalny w MetaEditor 5).
 - [`docs/STRATEGIA.md`](docs/STRATEGIA.md) — pełna dokumentacja strategii: warunki wejścia, SL/TP, autolot, filtry, parametry.
 
-## Co potrafi EA (v1.10)
+## Co potrafi EA (v1.11)
+
+> **Nowość v1.11**: tryb **diagnostyczny** (`InpVerboseDiagnostics=true`) — EA loguje w Journal dokładny powód odrzucenia sygnału na każdej zamkniętej świecy H4. Plus opcjonalne strzałki na wykresie (`InpDrawSignalArrows`, `InpDrawRejectedDots`). Patrz `docs/STRATEGIA.md` rozdział 11.
+
 
 - **Dwa tryby wejścia**:
   - **TK Cross** — świeże przecięcie Tenkan/Kijun nad/pod chmurą (start trendu).

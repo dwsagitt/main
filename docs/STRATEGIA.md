@@ -259,7 +259,51 @@ Jeżeli `InpUseAutoLot = false`, używany jest stały lot `InpFixedLot`.
 | `InpExitOnCloudBreak` | `true` | exit za chmurą |
 | `InpCooldownBarsAfterLoss` | `2` | pauza po stracie (świece H4) |
 
-## 11. Co dodano w wersji 1.10
+## 11. Diagnostyka — DLACZEGO EA nie wszedł w danym miejscu
+
+W wersji **1.11** dodano tryb diagnostyczny:
+
+| Parametr | Domyślnie | Opis |
+|---|---|---|
+| `InpVerboseDiagnostics` | `false` | Loguj w Journal/Experts dlaczego sygnał został odrzucony |
+| `InpDrawSignalArrows` | `false` | Rysuj zielone/czerwone strzałki dla **zaakceptowanych** sygnałów |
+| `InpDrawRejectedDots` | `false` | Rysuj szare krzyżyki dla setupów odrzuconych po przejściu filtrów bazowych |
+
+### Jak używać
+
+1. Włącz `InpVerboseDiagnostics = true` (i opcjonalnie `InpDrawRejectedDots = true`).
+2. Uruchom **Tester strategii** w trybie wizualnym albo nałóż EA na wykres.
+3. Po każdej zamkniętej świecy H4 EA wypisuje w **Journal** zakładce Tester /
+   Experts dokładnie powód odrzucenia, np.:
+
+```
+[2026.02.18 04:00] LONG odrzucony: PriceVsCloud (close=46123 Kumo[46500..47100])
+[2026.02.20 12:00] SHORT odrzucony: Chikou (close[1]=46500 vs close[27]=46300)
+[2026.03.05 08:00] LONG [PB_TENKAN]: brak dotkniecia/potwierdzenia TS (lookback=6, tol=0.25ATR)
+[2026.03.10 16:00] SHORT [PB_KIJUN]: brak dotkniecia/potwierdzenia KS (lookback=6, tol=0.25ATR)
+```
+
+### Najczęstsze powody odrzucenia (i jak je „rozluźnić")
+
+| Powód w Journalu | Co zrobić |
+|---|---|
+| `Slope (...)` | Zmniejsz `InpSlopeLookback` z 3 → 2 lub wyłącz `InpRequireKijunSlope` |
+| `FutureKumo` | Wyłącz `InpUseFutureKumoFilter` — bardzo restrykcyjny w bocznym rynku |
+| `Chikou` | Wyłącz `InpUseChikouFilter` (pozbywasz się pewności momentum) |
+| `[TKCROSS]: brak swiezego TK Cross` | Zwiększ `InpTKCrossLookback` z 5 → 8 lub polegaj na trybie pullback |
+| `[PB]: trend nie potwierdzony` | Cena wraca do/do chmury — to **dobre** odrzucenie, nie ruszać |
+| `[PB_TENKAN]: brak dotkniecia` | Zwiększ `InpPullbackTouchTolATR` z 0.25 → 0.5 lub `InpPullbackLookback` 6 → 10 |
+
+### Wizualizacja na wykresie
+
+Włącz `InpDrawSignalArrows = true`:
+- **Zielona strzałka w górę** = zaakceptowany sygnał LONG (z etykietą TKCROSS / PB_TENKAN / PB_KIJUN)
+- **Czerwona strzałka w dół** = zaakceptowany sygnał SHORT
+- **Szary krzyżyk** (gdy `InpDrawRejectedDots = true`) = setup miał poprawne filtry bazowe, ale brakło konkretnego trigera
+
+To pozwala zobaczyć **na wykresie**, gdzie EA „prawie wszedł", i porównać z miejscami, w których oczekiwałeś wejścia.
+
+## 12. Co dodano w wersji 1.10
 
 W odpowiedzi na obserwację z backtestu (US30 H4, sierpień–listopad 2025,
 zysk netto +869 / +8.69%, 29 transakcji, 55% Profit Trades, 1.52 PF):
