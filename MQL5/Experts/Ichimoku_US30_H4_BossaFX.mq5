@@ -8,7 +8,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Cursor Cloud Agent - 2026"
 #property link      "https://bossafx.pl"
-#property version   "1.13"
+#property version   "1.14"
 #property strict
 #property description "Pełna strategia Ichimoku dla US30 H4 (BossaFX) z autolotem"
 
@@ -29,6 +29,7 @@ input group "=== Symbol i Magic ==="
 input string  InpSymbol            = "";              // Symbol (puste = bieżący wykres). BossaFX: US30, US30.cash, DJI30, .US30 itp.
 input long    InpMagic             = 30040026;        // Magic number EA
 input string  InpComment           = "Ichimoku_H4";   // Komentarz transakcji
+input bool    InpEnforceH4         = true;            // Wymus uruchomienie na H4 (alert + brak handlu na innym TF)
 
 input group "=== Parametry Ichimoku (klasyczne 9/26/52) ==="
 input int     InpTenkan            = 9;               // Tenkan-sen
@@ -131,6 +132,7 @@ input bool    InpDrawRejectedDots  = false;           // Rysuj male krzyzyki dla
 int      ichi_handle = INVALID_HANDLE;
 int      ichi_ltf_handle = INVALID_HANDLE; // LowerTF (np. H1)
 int      atr_handle  = INVALID_HANDLE;
+bool     gLowerTFActive = false; // efektywna flaga LTF (uwzglednia walidacje TF)
 string   gSymbol     = "";
 datetime gLastBarTime = 0;
 datetime gLastTKCrossBar = 0;        // ostatni słupek z wejściem na TK-Cross (one-per-bar)
@@ -149,6 +151,36 @@ ulong    gPartialDoneTickets[];      // tickety, dla których wykonano już czę
 //+------------------------------------------------------------------+
 int OnInit()
 {
+   if(_Period != PERIOD_H4)
+   {
+      string msg = StringFormat(
+         "OSTRZEZENIE: EA zaprojektowany dla H4 a uruchomiono na %s. "
+         "Logika Ichimoku 9/26/52 jest dostrojona do H4. Wynik na innym TF "
+         "bedzie nieprzewidywalny (sieczka).",
+         EnumToString((ENUM_TIMEFRAMES)_Period));
+      Print(msg);
+      Alert(msg);
+      if(InpEnforceH4)
+      {
+         Print("InpEnforceH4=true -> EA NIE bedzie handlowac. Ustaw wykres na H4 lub wylacz InpEnforceH4.");
+         return(INIT_FAILED);
+      }
+   }
+
+   gLowerTFActive = false;
+   if(InpUseLowerTF)
+   {
+      if(PeriodSeconds(InpLowerTF) >= PeriodSeconds(PERIOD_H4))
+      {
+         PrintFormat("OSTRZEZENIE: InpLowerTF (%s) musi byc NIZSZY niz H4. Wylaczam LowerTF.",
+                     EnumToString(InpLowerTF));
+      }
+      else
+      {
+         gLowerTFActive = true;
+      }
+   }
+
    gSymbol = (StringLen(InpSymbol) > 0) ? InpSymbol : _Symbol;
 
    if(!sym.Name(gSymbol))
@@ -178,7 +210,7 @@ int OnInit()
       return(INIT_FAILED);
    }
 
-   if(InpUseLowerTF)
+   if(gLowerTFActive)
    {
       ichi_ltf_handle = iIchimoku(gSymbol, InpLowerTF, InpTenkan, InpKijun, InpSenkouB);
       if(ichi_ltf_handle == INVALID_HANDLE)
@@ -233,7 +265,7 @@ bool IsNewBarH4()
 datetime gLastBarTimeLTF = 0;
 bool IsNewBarLTF()
 {
-   if(!InpUseLowerTF) return false;
+   if(!gLowerTFActive) return false;
    datetime t[];
    if(CopyTime(gSymbol, InpLowerTF, 0, 1, t) <= 0) return false;
    if(t[0] != gLastBarTimeLTF)
@@ -930,7 +962,7 @@ void ManagePositions()
       }
 
       // === Wyjście: LowerTF reverse TK Cross (szybsza reakcja niz H4) ===
-      if(InpUseLowerTF && InpLowerTFExitOnTKCross && ichi_ltf_handle != INVALID_HANDLE)
+      if(gLowerTFActive && InpLowerTFExitOnTKCross && ichi_ltf_handle != INVALID_HANDLE)
       {
          int ltfCross = DetectTKCrossLTF(InpLowerTFExitLookback);
          if((isBuy && ltfCross == -1) || (!isBuy && ltfCross == 1))
@@ -1127,7 +1159,7 @@ bool H4TrendConfirms(int dir)
 //+------------------------------------------------------------------+
 void TryLowerTFEarlyEntry()
 {
-   if(!InpUseLowerTF || !InpLowerTFEarlyEntry) return;
+   if(!gLowerTFActive || !InpLowerTFEarlyEntry) return;
    if(ichi_ltf_handle == INVALID_HANDLE) return;
 
    if(!InSession())   return;
@@ -1163,7 +1195,7 @@ void OnTick()
    ManagePositions();
 
    // === Wczesne wejscie na LowerTF (np. H1) - tylko na nowej swiecy LTF
-   if(InpUseLowerTF && InpLowerTFEarlyEntry && IsNewBarLTF())
+   if(gLowerTFActive && InpLowerTFEarlyEntry && IsNewBarLTF())
       TryLowerTFEarlyEntry();
 
    if(!IsNewBarH4()) return;

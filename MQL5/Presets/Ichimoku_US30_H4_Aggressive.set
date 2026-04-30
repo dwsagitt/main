@@ -1,13 +1,14 @@
-; Ichimoku US30 H4 BossaFX - preset AGGRESSIVE
-; Profil: wiele wejsc, opt-in early entry na H1, krotsze RR
-; Cel: PF >= 1.3, Win% 40-50, ~80-150 trades/rok
-; UWAGA: wieksze ryzyko DD - osobny backtest obowiazkowy
+; Ichimoku US30 H4 BossaFX - preset AGGRESSIVE (zlagodzony v1.14)
+; Profil: wieksza frekwencja niz Balanced, ALE filtry jakosci ZOSTAJA
+; (Chikou, StrongTKCross, Slope) - inaczej powstaje sieczka.
+; Cel: PF >= 1.4, Win% 45-55, ~50-80 trades/rok.
 ;
-; Format MT5 .set: nazwa=wartosc||start||step||stop||F (F=optymalizacja)
+; Format MT5 .set: nazwa=wartosc
 
 InpSymbol=
 InpMagic=30040026
 InpComment=Ichimoku_H4
+InpEnforceH4=true
 
 InpTenkan=9
 InpKijun=26
@@ -19,16 +20,16 @@ InpEnablePullbackEntry=true
 InpPullbackOnTenkan=true
 InpPullbackOnKijun=true
 InpPullbackLookback=8
-InpPullbackTouchTolATR=0.4
+InpPullbackTouchTolATR=0.35
 
-InpUseChikouFilter=false
+InpUseChikouFilter=true
 InpUseFutureKumoFilter=true
 InpUseKijunFilter=true
 InpRequireTKCross=true
-InpTKCrossLookback=8
-InpStrongTKCrossOnly=false
+InpTKCrossLookback=7
+InpStrongTKCrossOnly=true
 InpUseSlopeFilter=true
-InpSlopeLookback=2
+InpSlopeLookback=3
 InpRequireKijunSlope=true
 InpRequireTenkanSlope=false
 
@@ -41,7 +42,7 @@ InpAvoidFridayClose=true
 InpFridayCloseHour=20
 
 InpUseAutoLot=true
-InpRiskPercent=1.5
+InpRiskPercent=1.25
 InpFixedLot=0.10
 InpMaxLot=5.0
 InpMinLot=0.0
@@ -50,10 +51,10 @@ InpMaxRiskCapEUR=0.0
 InpATRTimeframe=16388
 InpATRPeriod=14
 InpATRMultSL=1.8
-InpRR=1.8
+InpRR=2.0
 InpUseKijunSL=true
-InpUseCloudSL=false
-InpSLBufferPoints=40
+InpUseCloudSL=true
+InpSLBufferPoints=50
 InpMinStopPoints=200
 
 InpUseLowerTF=true
@@ -65,28 +66,28 @@ InpLowerTFEntryLookback=2
 InpLowerTFRequireH4Trend=true
 
 InpUseStrongMomentumExit=true
-InpMomentumATRMult=1.3
-InpMomentumBodyPct=0.50
+InpMomentumATRMult=1.4
+InpMomentumBodyPct=0.55
 InpMomentumOnNewBarOnly=false
 
 InpUseKijunTrailing=true
 InpKijunTrailBuffer=80
 InpUseTenkanTrailing=true
-InpTenkanTrailBuffer=40
+InpTenkanTrailBuffer=50
 InpTenkanTrailAfterPartial=true
 InpExitOnTKCross=true
 InpExitOnCloudBreak=true
 InpUseBreakEven=true
-InpBreakEvenAtR=0.7
-InpBreakEvenOffsetPt=20
+InpBreakEvenAtR=0.8
+InpBreakEvenOffsetPt=25
 InpUsePartialTP=true
-InpPartialTPAtR=0.8
+InpPartialTPAtR=0.9
 InpPartialTPPercent=50.0
 
 InpMaxPositions=1
-InpOnePositionPerBar=false
+InpOnePositionPerBar=true
 InpAllowHedge=false
-InpSlippagePoints=40
+InpSlippagePoints=30
 InpCooldownBarsAfterLoss=1
 
 InpVerboseDiagnostics=false

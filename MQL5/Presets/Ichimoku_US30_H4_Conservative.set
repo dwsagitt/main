@@ -8,6 +8,7 @@
 InpSymbol=
 InpMagic=30040026
 InpComment=Ichimoku_H4
+InpEnforceH4=true
 
 InpTenkan=9
 InpKijun=26

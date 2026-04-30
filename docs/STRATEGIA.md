@@ -259,6 +259,44 @@ Jeżeli `InpUseAutoLot = false`, używany jest stały lot `InpFixedLot`.
 | `InpExitOnCloudBreak` | `true` | exit za chmurą |
 | `InpCooldownBarsAfterLoss` | `2` | pauza po stracie (świece H4) |
 
+## 11.C Najczęstsze błędy uruchomienia (FAQ)
+
+### Błąd 1: 100+ transakcji i ujemny wynik („sieczka")
+
+**Objaw**: backtest pokazuje 161 transakcji, NetProfit -920.25, PF 0.85, win% 39.75%, AHPR ujemny.
+
+**Przyczyna**: EA został odpalony na **innym TF niż H4**.
+
+Strategia jest dostrojona do H4:
+- Tenkan = 9 świec H4 = 36h
+- Kijun = 26 świec H4 = 4 dni
+- Future Kumo = 26 świec do przodu = 4 dni „pamięci" trendu
+
+Na H1 te same liczby oznaczają 9h / 26h / 26h — całkiem inny zakres czasowy. Plus jeśli `InpLowerTF = H1` a wykres = H1, to LowerTF = ten sam TF = brak filtra, sam szum.
+
+**Rozwiązanie**: w v1.14 dodano parametr `InpEnforceH4=true` (default). EA odmówi handlu na innym TF niż H4 (alert + INIT_FAILED). Aby celowo odpalić na innym TF (eksperyment), ustaw `InpEnforceH4=false` — ale wynik nie jest miarodajny.
+
+**Sprawdź**: na pasku tytułu wykresu musi być `US30, H4, ...`. Jeśli widzisz `H1` / `M30` / `D1` — zmień na H4.
+
+### Błąd 2: Wczytany agresywny preset bez świadomości
+
+**Objaw**: dużo wejść, low win%, równo schodząca equity.
+
+**Przyczyna**: preset Aggressive ma niektóre filtry rozluźnione (np. `InpUseChikouFilter=false` w starych wersjach). W v1.14 preset Aggressive **został złagodzony** — Chikou + StrongTKCross zostają włączone, agresywność oznacza tylko większą frekwencję, nie gorszą jakość.
+
+**Rozwiązanie**: zacznij zawsze od presetu **Balanced**. Aggressive włączaj świadomie po backteście Balanced.
+
+### Błąd 3: Identyczne liczby na różnych zakresach
+
+**Objaw**: 29 trades / 869.20 NP / PF 1.52 niezależnie od dat backtestu.
+
+**Przyczyna**: MT5 odpala starą skompilowaną `.ex5` (kompilacja nie nadpisała pliku, bo EA był załadowany).
+
+**Rozwiązanie**:
+1. Zamknij wszystkie Testery i zdejmij EA z wykresów.
+2. F7 w MetaEditor — sprawdź `0 errors` i datę `.ex5` w Eksploratorze.
+3. Najlepiej: użyj `scripts/sync_to_mt5.bat` (auto pull+copy+compile).
+
 ## 11.B Optymalizacja parametrów (walk-forward, robust scoring)
 
 ### Custom fitness function — `OnTester`

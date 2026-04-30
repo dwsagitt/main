@@ -10,6 +10,14 @@ dla indeksu **US30** (Dow Jones 30 CFD) na interwale **H4**, dla brokera
 - [`MQL5/Experts/Ichimoku_US30_H4_BossaFX.mq5`](MQL5/Experts/Ichimoku_US30_H4_BossaFX.mq5) — Expert Advisor (kompilowalny w MetaEditor 5).
 - [`docs/STRATEGIA.md`](docs/STRATEGIA.md) — pełna dokumentacja strategii: warunki wejścia, SL/TP, autolot, filtry, parametry.
 
+## Co potrafi EA (v1.14)
+
+> **Nowość v1.14** — guardrail przeciwko najczęstszym błędom uruchomienia:
+> - **`InpEnforceH4=true`** (domyślnie): EA NIE handluje na innym TF niż H4 (alert + INIT_FAILED).
+> - Walidacja `InpLowerTF < H4` (nie pozwala by LowerTF był równy lub wyższy od H4).
+> - Złagodzony preset Aggressive — `InpUseChikouFilter` i `InpStrongTKCrossOnly` zostają **włączone**, agresywność = więcej okazji, nie gorsza jakość.
+> - Sekcja 11.C w `docs/STRATEGIA.md`: FAQ trzech najczęstszych błędów (sieczka na H1, agresywny preset, stara `.ex5`).
+
 ## Co potrafi EA (v1.13)
 
 > **Nowość v1.13** — narzędzia do optymalizacji:
