@@ -10,6 +10,16 @@ dla indeksu **US30** (Dow Jones 30 CFD) na interwale **H4**, dla brokera
 - [`MQL5/Experts/Ichimoku_US30_H4_BossaFX.mq5`](MQL5/Experts/Ichimoku_US30_H4_BossaFX.mq5) — Expert Advisor (kompilowalny w MetaEditor 5).
 - [`docs/STRATEGIA.md`](docs/STRATEGIA.md) — pełna dokumentacja strategii: warunki wejścia, SL/TP, autolot, filtry, parametry.
 
+## Co potrafi EA (v1.15)
+
+> **Nowość v1.15** — bullet-proof guardrail i wyświetlanie wersji:
+> - **Komentarz na wykresie**: `[Ichimoku v1.15] TF=H4 OK` po starcie EA. Jeśli go nie widzisz, masz starą `.ex5`.
+> - **Baner w Journal** przy starcie z numerem wersji.
+> - **Hard-block w `OnTick`** (niezależnie od `OnInit`) — gdy TF ≠ H4 i `InpEnforceH4=true`, EA nigdy nie zawiera transakcji.
+> - **`docs/INSTALACJA_KROK_PO_KROKU.md`** — pełna checklist od pobrania do pierwszego backtestu, z testem 5-sekundowym diagnozy „starej `.ex5`" i „złego Period".
+>
+> **Jeśli widzisz dziwne liczby/sieczkę — najpierw sprawdź `docs/INSTALACJA_KROK_PO_KROKU.md`**.
+
 ## Co potrafi EA (v1.14)
 
 > **Nowość v1.14** — guardrail przeciwko najczęstszym błędom uruchomienia:

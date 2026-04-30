@@ -8,7 +8,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Cursor Cloud Agent - 2026"
 #property link      "https://bossafx.pl"
-#property version   "1.14"
+#property version   "1.15"
 #property strict
 #property description "Pełna strategia Ichimoku dla US30 H4 (BossaFX) z autolotem"
 
@@ -21,6 +21,8 @@ CTrade          trade;
 CSymbolInfo     sym;
 CPositionInfo   pos;
 CAccountInfo    acc;
+
+#define EA_VERSION "1.15"
 
 //==================================================================
 // PARAMETRY WEJŚCIOWE
@@ -151,20 +153,36 @@ ulong    gPartialDoneTickets[];      // tickety, dla których wykonano już czę
 //+------------------------------------------------------------------+
 int OnInit()
 {
+   Print("================================================================");
+   PrintFormat("  Ichimoku US30 H4 BossaFX  v%s   uruchomiony na %s, TF=%s",
+               EA_VERSION, _Symbol, EnumToString((ENUM_TIMEFRAMES)_Period));
+   Print("================================================================");
+
    if(_Period != PERIOD_H4)
    {
       string msg = StringFormat(
-         "OSTRZEZENIE: EA zaprojektowany dla H4 a uruchomiono na %s. "
-         "Logika Ichimoku 9/26/52 jest dostrojona do H4. Wynik na innym TF "
-         "bedzie nieprzewidywalny (sieczka).",
-         EnumToString((ENUM_TIMEFRAMES)_Period));
+         "[v%s] BLAD: EA zaprojektowany WYLACZNIE dla H4. Aktualny TF: %s.\n"
+         "Logika Ichimoku 9/26/52 to liczby BAROW, nie godzin - na innym TF\n"
+         "wynik bedzie zupelnie inny i strategia nie ma sensu.\n"
+         "Zmien TF wykresu / Testera na H4.",
+         EA_VERSION, EnumToString((ENUM_TIMEFRAMES)_Period));
       Print(msg);
-      Alert(msg);
+
+      ChartSetInteger(0, CHART_COLOR_BACKGROUND, clrDarkRed);
+      Comment("[Ichimoku v" + EA_VERSION + "]\n" +
+              "BLAD: ZLY TIMEFRAME (" + EnumToString((ENUM_TIMEFRAMES)_Period) + ")\n" +
+              "Wymagane: H4\n" +
+              "EA NIE HANDLUJE.");
+
+      if(!MQLInfoInteger(MQL_TESTER) && !MQLInfoInteger(MQL_OPTIMIZATION))
+         Alert(msg);
+
       if(InpEnforceH4)
-      {
-         Print("InpEnforceH4=true -> EA NIE bedzie handlowac. Ustaw wykres na H4 lub wylacz InpEnforceH4.");
          return(INIT_FAILED);
-      }
+   }
+   else
+   {
+      Comment("[Ichimoku v" + EA_VERSION + "]  TF=H4  OK");
    }
 
    gLowerTFActive = false;
@@ -245,6 +263,7 @@ void OnDeinit(const int reason)
    if(ichi_handle     != INVALID_HANDLE) IndicatorRelease(ichi_handle);
    if(ichi_ltf_handle != INVALID_HANDLE) IndicatorRelease(ichi_ltf_handle);
    if(atr_handle      != INVALID_HANDLE) IndicatorRelease(atr_handle);
+   Comment("");
 }
 
 //+------------------------------------------------------------------+
@@ -1190,6 +1209,8 @@ void TryLowerTFEarlyEntry()
 //+------------------------------------------------------------------+
 void OnTick()
 {
+   if(InpEnforceH4 && _Period != PERIOD_H4) return; // bullet-proof guard
+
    if(!sym.RefreshRates()) return;
 
    ManagePositions();
