@@ -10,6 +10,16 @@ dla indeksu **US30** (Dow Jones 30 CFD) na interwale **H4**, dla brokera
 - [`MQL5/Experts/Ichimoku_US30_H4_BossaFX.mq5`](MQL5/Experts/Ichimoku_US30_H4_BossaFX.mq5) — Expert Advisor (kompilowalny w MetaEditor 5).
 - [`docs/STRATEGIA.md`](docs/STRATEGIA.md) — pełna dokumentacja strategii: warunki wejścia, SL/TP, autolot, filtry, parametry.
 
+## Co potrafi EA (v1.16)
+
+> **Nowość v1.16** — naprawa fundamentu po post-mortem defaults v1.14:
+> - `InpEnablePullbackEntry=false` w defaults (była `true` — generowała sieczkę w boku).
+> - **Filtr ADX** dla pullbacka (default `InpADXMinForPullback=22`) — pullback tylko w potwierdzonym trendzie, nie w boku.
+> - **`InpSlopeMinATRMove=0.15`** — slope KS musi się zmienić o min 15% ATR (nie tylko `>= 0`).
+> - **Strong Momentum Exit** zaostrzony: 2 świece pod rząd, tylko na zamknięciu, tylko gdy pozycja na plusie (defaults).
+> - Presety zaktualizowane: **Conservative** = pure TK Cross (jak v1.00 logic), **Balanced** = z ADX-pullback, **Aggressive** = wszystko ON.
+> - Sekcja 11.D w `docs/STRATEGIA.md`: post-mortem z tabelą porównań i workflowem rekomendowanym.
+
 ## Co potrafi EA (v1.15)
 
 > **Nowość v1.15** — bullet-proof guardrail i wyświetlanie wersji:

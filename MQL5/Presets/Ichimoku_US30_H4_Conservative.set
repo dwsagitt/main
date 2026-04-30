@@ -1,9 +1,9 @@
-; Ichimoku US30 H4 BossaFX - preset CONSERVATIVE
-; Profil: rzadkie wejscia, wysoka selektywnosc, niski DD
-; Cel: PF >= 1.7, Win% 50-60, max DD < 15%
-; Uzycie: w Testerze 'Load' -> wybierz ten plik
+; Ichimoku US30 H4 BossaFX - preset CONSERVATIVE (v1.16)
+; Profil: tylko TK Cross (jak v1.00), bez pullback - max selektywnosc
+; Cel: 25-40 trades/rok, PF >= 1.5, Win% >= 50, Max DD < 12%
 ;
-; Format MT5 .set: nazwa=wartosc||start||step||stop||F (F=optymalizacja)
+; UWAGA: to ZALECANY preset startowy. Pullback wlaczaj swiadomie
+; w Balanced/Aggressive po porownaniu wynikow.
 
 InpSymbol=
 InpMagic=30040026
@@ -16,11 +16,17 @@ InpSenkouB=52
 InpChikouShift=26
 
 InpEnableTKCrossEntry=true
-InpEnablePullbackEntry=true
+InpEnablePullbackEntry=false
 InpPullbackOnTenkan=false
 InpPullbackOnKijun=true
 InpPullbackLookback=4
-InpPullbackTouchTolATR=0.2
+InpPullbackTouchTolATR=0.20
+
+InpUseADXFilter=false
+InpADXTimeframe=16388
+InpADXPeriod=14
+InpADXMinForPullback=22.0
+InpADXMinForTKCross=0.0
 
 InpUseChikouFilter=true
 InpUseFutureKumoFilter=true
@@ -32,6 +38,7 @@ InpUseSlopeFilter=true
 InpSlopeLookback=3
 InpRequireKijunSlope=true
 InpRequireTenkanSlope=false
+InpSlopeMinATRMove=0.20
 
 InpUseSpreadFilter=true
 InpMaxSpreadPoints=80
@@ -42,7 +49,7 @@ InpAvoidFridayClose=true
 InpFridayCloseHour=20
 
 InpUseAutoLot=true
-InpRiskPercent=0.5
+InpRiskPercent=0.75
 InpFixedLot=0.10
 InpMaxLot=5.0
 InpMinLot=0.0
@@ -66,21 +73,23 @@ InpLowerTFEntryLookback=2
 InpLowerTFRequireH4Trend=true
 
 InpUseStrongMomentumExit=true
-InpMomentumATRMult=1.5
-InpMomentumBodyPct=0.55
+InpMomentumATRMult=2.0
+InpMomentumBodyPct=0.65
 InpMomentumOnNewBarOnly=true
+InpMomentumRequireProfit=true
+InpMomentumRequire2Bars=true
 
 InpUseKijunTrailing=true
 InpKijunTrailBuffer=120
-InpUseTenkanTrailing=true
+InpUseTenkanTrailing=false
 InpTenkanTrailBuffer=70
 InpTenkanTrailAfterPartial=true
 InpExitOnTKCross=true
 InpExitOnCloudBreak=true
 InpUseBreakEven=true
-InpBreakEvenAtR=0.8
+InpBreakEvenAtR=1.0
 InpBreakEvenOffsetPt=40
-InpUsePartialTP=true
+InpUsePartialTP=false
 InpPartialTPAtR=1.0
 InpPartialTPPercent=50.0
 
@@ -88,7 +97,7 @@ InpMaxPositions=1
 InpOnePositionPerBar=true
 InpAllowHedge=false
 InpSlippagePoints=30
-InpCooldownBarsAfterLoss=3
+InpCooldownBarsAfterLoss=2
 
 InpVerboseDiagnostics=false
 InpDrawSignalArrows=false

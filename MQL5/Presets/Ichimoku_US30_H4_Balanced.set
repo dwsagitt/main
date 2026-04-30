@@ -1,8 +1,7 @@
-; Ichimoku US30 H4 BossaFX - preset BALANCED (rekomendowany)
-; Profil: rownowaga frekwencji i jakosci sygnalow
-; Cel: PF >= 1.5, Win% 45-55, max DD < 20%, ~40-60 trades/rok
-;
-; Format MT5 .set: nazwa=wartosc||start||step||stop||F (F=optymalizacja)
+; Ichimoku US30 H4 BossaFX - preset BALANCED (v1.16)
+; Profil: TK Cross + Pullback do KIJUN-SEN tylko gdy ADX > 22
+; (tj. tylko w potwierdzonym trendzie, blokujac sieczke w boku).
+; Cel: 35-70 trades/rok, PF >= 1.4, Win% 45-55, Max DD < 18%
 
 InpSymbol=
 InpMagic=30040026
@@ -16,10 +15,16 @@ InpChikouShift=26
 
 InpEnableTKCrossEntry=true
 InpEnablePullbackEntry=true
-InpPullbackOnTenkan=true
+InpPullbackOnTenkan=false
 InpPullbackOnKijun=true
-InpPullbackLookback=6
+InpPullbackLookback=5
 InpPullbackTouchTolATR=0.25
+
+InpUseADXFilter=true
+InpADXTimeframe=16388
+InpADXPeriod=14
+InpADXMinForPullback=22.0
+InpADXMinForTKCross=18.0
 
 InpUseChikouFilter=true
 InpUseFutureKumoFilter=true
@@ -31,6 +36,7 @@ InpUseSlopeFilter=true
 InpSlopeLookback=3
 InpRequireKijunSlope=true
 InpRequireTenkanSlope=false
+InpSlopeMinATRMove=0.15
 
 InpUseSpreadFilter=true
 InpMaxSpreadPoints=80
@@ -65,9 +71,11 @@ InpLowerTFEntryLookback=2
 InpLowerTFRequireH4Trend=true
 
 InpUseStrongMomentumExit=true
-InpMomentumATRMult=1.5
-InpMomentumBodyPct=0.55
-InpMomentumOnNewBarOnly=false
+InpMomentumATRMult=1.8
+InpMomentumBodyPct=0.60
+InpMomentumOnNewBarOnly=true
+InpMomentumRequireProfit=true
+InpMomentumRequire2Bars=true
 
 InpUseKijunTrailing=true
 InpKijunTrailBuffer=100

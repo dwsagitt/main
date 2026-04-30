@@ -8,7 +8,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Cursor Cloud Agent - 2026"
 #property link      "https://bossafx.pl"
-#property version   "1.15"
+#property version   "1.16"
 #property strict
 #property description "Pełna strategia Ichimoku dla US30 H4 (BossaFX) z autolotem"
 
@@ -22,7 +22,7 @@ CSymbolInfo     sym;
 CPositionInfo   pos;
 CAccountInfo    acc;
 
-#define EA_VERSION "1.15"
+#define EA_VERSION "1.16"
 
 //==================================================================
 // PARAMETRY WEJŚCIOWE
@@ -41,11 +41,18 @@ input int     InpChikouShift       = 26;              // Przesunięcie Chikou (i
 
 input group "=== Tryby wejścia ==="
 input bool    InpEnableTKCrossEntry = true;           // [Tryb 1] Wejście na świeżym TK Cross (breakout)
-input bool    InpEnablePullbackEntry = true;          // [Tryb 2] Wejście na pullbacku do TS/KS w trendzie
-input bool    InpPullbackOnTenkan  = true;            //   Pullback do Tenkan-sen (krótkie korekty)
-input bool    InpPullbackOnKijun   = true;            //   Pullback do Kijun-sen (głębsze korekty)
-input int     InpPullbackLookback  = 6;               //   Ile świec wstecz szukamy dotknięcia TS/KS
-input double  InpPullbackTouchTolATR = 0.25;          //   Tolerancja dotknięcia (× ATR), 0.25 = blisko TS/KS
+input bool    InpEnablePullbackEntry = false;         // [Tryb 2] Pullback - WLACZAJ TYLKO Z FILTREM ADX (inaczej sieczka)
+input bool    InpPullbackOnTenkan  = false;           //   Pullback do Tenkan-sen (krótkie korekty - bardzo agresywne)
+input bool    InpPullbackOnKijun   = true;            //   Pullback do Kijun-sen (głębsze korekty - bezpieczniejsze)
+input int     InpPullbackLookback  = 4;               //   Ile świec wstecz szukamy dotknięcia TS/KS
+input double  InpPullbackTouchTolATR = 0.20;          //   Tolerancja dotknięcia (× ATR), mniej = blizej linii
+
+input group "=== Filtr ADX (sila trendu) - dla pullbackow ==="
+input bool    InpUseADXFilter      = true;            // Filtr ADX (blokuje pullback w boku/slabym trendzie)
+input ENUM_TIMEFRAMES InpADXTimeframe = PERIOD_H4;    // TF dla ADX
+input int     InpADXPeriod         = 14;              // Okres ADX
+input double  InpADXMinForPullback = 22.0;            // Min ADX dla wejscia na pullback (>22 = trend)
+input double  InpADXMinForTKCross  = 0.0;             // Min ADX dla TK Cross (0 = nie filtruj)
 
 input group "=== Filtry trendu ==="
 input bool    InpUseChikouFilter   = true;            // Wymagaj potwierdzenia Chikou Span
@@ -58,6 +65,7 @@ input bool    InpUseSlopeFilter    = true;            // Wymagaj zgodnego nachyl
 input int     InpSlopeLookback     = 3;               // O ile świec wstecz porównujemy slope TS/KS
 input bool    InpRequireKijunSlope = true;            // Wymagaj nachylenia Kijun (kluczowe dla trendu)
 input bool    InpRequireTenkanSlope = false;          // Wymagaj nachylenia Tenkan (rygorystyczne)
+input double  InpSlopeMinATRMove   = 0.15;            // Min |Kijun(now) - Kijun(prev)| / ATR (0=>=0, 0.15=15% ATR)
 
 input group "=== Filtry rynkowe ==="
 input bool    InpUseSpreadFilter   = true;            // Filtr maksymalnego spreadu
@@ -119,9 +127,11 @@ input bool    InpLowerTFRequireH4Trend = true;        // Wczesne wejscie tylko g
 
 input group "=== Strong Momentum Exit (counter-bar) ==="
 input bool    InpUseStrongMomentumExit = true;        // Zamknij pozycje gdy pojawi sie silny counter-bar
-input double  InpMomentumATRMult   = 1.5;             // Zakres swiecy >= ATR * X (1.5 = silny ruch)
-input double  InpMomentumBodyPct   = 0.55;            // Cialo / zakres >= X (0.55 = wyrazne cialo)
-input bool    InpMomentumOnNewBarOnly = false;        // true = sprawdzaj na zamknieciu swiecy; false = na biezacej
+input double  InpMomentumATRMult   = 1.8;             // Zakres swiecy >= ATR * X (1.8 = bardzo silny ruch)
+input double  InpMomentumBodyPct   = 0.60;            // Cialo / zakres >= X (0.60 = wyrazne cialo)
+input bool    InpMomentumOnNewBarOnly = true;         // true = tylko na zamknieciu swiecy (eliminuje wstrzasy intra-bar)
+input bool    InpMomentumRequireProfit = true;        // Zamykaj tylko jezeli pozycja juz na plusie (nie na biezacym SL)
+input bool    InpMomentumRequire2Bars = true;         // Wymagaj 2 silnych counter-barow pod rzad
 
 input group "=== Diagnostyka ==="
 input bool    InpVerboseDiagnostics = false;          // Loguj DLACZEGO sygnal nie zaszedl (Journal)
@@ -134,6 +144,7 @@ input bool    InpDrawRejectedDots  = false;           // Rysuj male krzyzyki dla
 int      ichi_handle = INVALID_HANDLE;
 int      ichi_ltf_handle = INVALID_HANDLE; // LowerTF (np. H1)
 int      atr_handle  = INVALID_HANDLE;
+int      adx_handle  = INVALID_HANDLE;
 bool     gLowerTFActive = false; // efektywna flaga LTF (uwzglednia walidacje TF)
 string   gSymbol     = "";
 datetime gLastBarTime = 0;
@@ -245,6 +256,16 @@ int OnInit()
       return(INIT_FAILED);
    }
 
+   if(InpUseADXFilter)
+   {
+      adx_handle = iADX(gSymbol, InpADXTimeframe, InpADXPeriod);
+      if(adx_handle == INVALID_HANDLE)
+      {
+         PrintFormat("Błąd tworzenia ADX handle dla %s", gSymbol);
+         return(INIT_FAILED);
+      }
+   }
+
    datetime t[];
    if(CopyTime(gSymbol, PERIOD_H4, 0, 1, t) > 0)
       gLastBarTime = t[0];
@@ -263,6 +284,7 @@ void OnDeinit(const int reason)
    if(ichi_handle     != INVALID_HANDLE) IndicatorRelease(ichi_handle);
    if(ichi_ltf_handle != INVALID_HANDLE) IndicatorRelease(ichi_ltf_handle);
    if(atr_handle      != INVALID_HANDLE) IndicatorRelease(atr_handle);
+   if(adx_handle      != INVALID_HANDLE) IndicatorRelease(adx_handle);
    Comment("");
 }
 
@@ -436,6 +458,16 @@ double GetATR(int shift = 1)
    return a[0];
 }
 
+// ADX bufor 0 = ADX main line; bufor 1 = +DI; bufor 2 = -DI
+double GetADX(int shift = 1)
+{
+   if(adx_handle == INVALID_HANDLE) return 0.0;
+   double a[];
+   ArraySetAsSeries(a, true);
+   if(CopyBuffer(adx_handle, 0, shift, 1, a) <= 0) return 0.0;
+   return a[0];
+}
+
 //+------------------------------------------------------------------+
 //| Normalizacja ceny i wolumenu                                     |
 //+------------------------------------------------------------------+
@@ -570,8 +602,20 @@ int LineSlope(int bufferIdx, int lookback)
    if(CopyBuffer(ichi_handle, bufferIdx, 1, need, a) < need) return 0;
    double now  = a[0];
    double prev = a[lookback];
-   if(now > prev) return 1;
-   if(now < prev) return -1;
+   double diff = now - prev;
+
+   if(InpSlopeMinATRMove > 0)
+   {
+      double atr = GetATR(1);
+      if(atr > 0)
+      {
+         double minMove = InpSlopeMinATRMove * atr;
+         if(MathAbs(diff) < minMove) return 0; // za slaby - traktuj jako plaski
+      }
+   }
+
+   if(diff > 0) return 1;
+   if(diff < 0) return -1;
    return 0;
 }
 
@@ -711,14 +755,16 @@ int CheckEntrySignal(string &signalKind)
          continue;
       }
 
+      double adxNow = (InpUseADXFilter && adx_handle != INVALID_HANDLE) ? GetADX(1) : 0.0;
+
       // ------ Tryb 1: TK CROSS ------
-      bool tkAccepted = false;
       if(InpEnableTKCrossEntry)
       {
          int tkCross = InpRequireTKCross ? DetectTKCross(InpTKCrossLookback) : (t1 > k1 ? 1 : (t1 < k1 ? -1 : 0));
          bool strong = !InpStrongTKCrossOnly || (isBull ? tAboveCloud : tBelowCloud);
+         bool adxOK  = (!InpUseADXFilter || InpADXMinForTKCross <= 0 || adxNow >= InpADXMinForTKCross);
 
-         if(tkCross == dir && strong)
+         if(tkCross == dir && strong && adxOK)
          {
             signalKind = "TKCROSS";
             DrawSignalArrow(dir, "TKCROSS", true);
@@ -730,12 +776,22 @@ int CheckEntrySignal(string &signalKind)
                VLog(StringFormat("%s [TKCROSS]: brak swiezego TK Cross w %d swiecach (tkCross=%d)", D, InpTKCrossLookback, tkCross));
             else if(!strong)
                VLog(StringFormat("%s [TKCROSS]: TK Cross OK ale nie po wlasciwej stronie chmury (StrongTKCrossOnly=true)", D));
+            else if(!adxOK)
+               VLog(StringFormat("%s [TKCROSS]: ADX=%.1f < %.1f", D, adxNow, InpADXMinForTKCross));
          }
       }
 
       // ------ Tryb 2: PULLBACK ------
       if(InpEnablePullbackEntry)
       {
+         bool adxOK = (!InpUseADXFilter || adxNow >= InpADXMinForPullback);
+         if(!adxOK)
+         {
+            VLog(StringFormat("%s [PB]: ADX=%.1f < %.1f (rynek w boku - blokuj pullback)",
+                 D, adxNow, InpADXMinForPullback));
+            DrawSignalArrow(dir, "REJ", false);
+            continue;
+         }
          bool trendOK = isBull ? (t1 > k1 && tAboveCloud) : (t1 < k1 && tBelowCloud);
          if(!trendOK)
          {
@@ -907,11 +963,8 @@ void TryOpen(int dir, string kind)
 //| Zwraca true gdy ostatnia (lub biezaca) swieca wskazuje silny     |
 //| ruch przeciwny do pozycji                                        |
 //+------------------------------------------------------------------+
-bool DetectStrongCounterBar(int posDir)
+bool IsCounterBarAt(int idx, int posDir)
 {
-   if(!InpUseStrongMomentumExit) return false;
-
-   int idx = InpMomentumOnNewBarOnly ? 1 : 0; // 0=biezaca, 1=zamknieta
    double op[], hi[], lo[], cl[];
    ArraySetAsSeries(op, true);
    ArraySetAsSeries(hi, true);
@@ -932,13 +985,27 @@ bool DetectStrongCounterBar(int posDir)
    bool bigRange = (range >= InpMomentumATRMult * atr);
    bool bigBody  = (body  >= InpMomentumBodyPct * range);
 
-   bool bearishBar = (cl[0] < op[0]); // czerwona swieca
-   bool bullishBar = (cl[0] > op[0]); // zielona swieca
+   bool bearishBar = (cl[0] < op[0]);
+   bool bullishBar = (cl[0] > op[0]);
 
    if(posDir == 1  && bigRange && bigBody && bearishBar) return true;
    if(posDir == -1 && bigRange && bigBody && bullishBar) return true;
-
    return false;
+}
+
+bool DetectStrongCounterBar(int posDir)
+{
+   if(!InpUseStrongMomentumExit) return false;
+
+   int idx = InpMomentumOnNewBarOnly ? 1 : 0;
+   if(!IsCounterBarAt(idx, posDir)) return false;
+
+   if(InpMomentumRequire2Bars)
+   {
+      // wymagamy potwierdzenia: poprzednia tez musi byc counter
+      if(!IsCounterBarAt(idx + 1, posDir)) return false;
+   }
+   return true;
 }
 
 //+------------------------------------------------------------------+
@@ -974,10 +1041,22 @@ void ManagePositions()
       // === Wyjście: STRONG MOMENTUM (counter-bar) ===
       if(InpUseStrongMomentumExit && DetectStrongCounterBar(posDir))
       {
-         trade.PositionClose(ticket);
-         PrintFormat("Zamknieto #%I64u: STRONG MOMENTUM counter-bar (range>=%.1fxATR, body>=%.0f%%)",
-                     ticket, InpMomentumATRMult, InpMomentumBodyPct * 100);
-         continue;
+         double moveNow = isBuy ? (price - open) : (open - price);
+         bool inProfit = (moveNow > 0);
+
+         if(!InpMomentumRequireProfit || inProfit)
+         {
+            trade.PositionClose(ticket);
+            PrintFormat("Zamknieto #%I64u: STRONG MOMENTUM counter-bar (range>=%.1fxATR, body>=%.0f%%, %s)",
+                        ticket, InpMomentumATRMult, InpMomentumBodyPct * 100,
+                        (InpMomentumRequire2Bars?"2bars":"1bar"));
+            continue;
+         }
+         else
+         {
+            VLog(StringFormat("Strong momentum #%I64u ale pozycja na minusie - nie zamykam",
+                 ticket));
+         }
       }
 
       // === Wyjście: LowerTF reverse TK Cross (szybsza reakcja niz H4) ===

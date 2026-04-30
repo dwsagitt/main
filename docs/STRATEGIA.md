@@ -259,6 +259,51 @@ Jeżeli `InpUseAutoLot = false`, używany jest stały lot `InpFixedLot`.
 | `InpExitOnCloudBreak` | `true` | exit za chmurą |
 | `InpCooldownBarsAfterLoss` | `2` | pauza po stracie (świece H4) |
 
+## 11.D Post-mortem v1.10–v1.14: dlaczego defaults dawały sieczkę
+
+Backtest na US30 H4, sty 2025 – kwi 2026, defaults v1.14:
+
+| Metryka | v1.00 (TK Cross only) | v1.14 (defaults) |
+|---|---|---|
+| Trades | 29 | 161 |
+| Net Profit | +869.20 | −920.25 |
+| Profit Factor | 1.52 | 0.85 |
+| Win % | 55% | 39% |
+| Sharpe | 0.86 | −0.88 |
+
+**Diagnoza**: w v1.10 dodałem tryb Pullback Bounce z domyślnym `InpEnablePullbackEntry=true`. W silnych trendach to działa, ale na US30 styczeń–kwiecień 2026 dominują boki/słabe trendy — każda korekta do Tenkan-sen generuje sygnał, który jest zaraz wybijany. Dodatkowo `InpUseStrongMomentumExit` w defaults zamykał pozycje na pierwszej silnej świecy przeciw, często **przed** osiągnięciem 1R, więc nawet potencjalnie zyskowne setupy nie miały czasu zarobić.
+
+### Naprawy w v1.16
+
+| Co | Wartość v1.10–v1.14 | Wartość v1.16 |
+|---|---|---|
+| `InpEnablePullbackEntry` | `true` (default) | **`false`** (default) |
+| `InpPullbackOnTenkan` | `true` | **`false`** |
+| `InpUseADXFilter` | brak | **dodane, default `true`** |
+| `InpADXMinForPullback` | brak | **22.0** (pullback tylko gdy ADX > 22) |
+| `InpSlopeMinATRMove` | brak (slope >= 0) | **0.15** (minimalna zmiana KS = 15% ATR) |
+| `InpMomentumATRMult` | 1.5 | **1.8** (ostrzejszy próg) |
+| `InpMomentumOnNewBarOnly` | `false` | **`true`** (eliminuje wstrząsy intra-bar) |
+| `InpMomentumRequire2Bars` | brak | **`true`** (2 świece pod rząd) |
+| `InpMomentumRequireProfit` | brak | **`true`** (nie zamykaj na minusie) |
+
+### Dlaczego ADX
+
+Pullback bounce ma sens **tylko w trendzie**. W rynku bocznym każde dotknięcie TS/KS = szum.
+
+ADX (Average Directional Index) Wildera mierzy **siłę trendu** (niezależnie od kierunku):
+- ADX < 20 → rynek w boku, brak trendu.
+- ADX 20–25 → słaby trend.
+- ADX > 25 → silny trend.
+
+Próg 22 jest kompromisem — odsiewa boki (ADX 15–20), ale jeszcze nie wymaga pełnego silnego trendu (>25). Dla bardziej selektywnych: 25–30. Dla agresywnych: 18–20.
+
+### Workflow rekomendowany na v1.16+
+
+1. **Start: preset Conservative** (`InpEnablePullbackEntry=false`, ADX off, RR 2.5). To powtarza prawie 1:1 wynik v1.00 — bezpieczna baza.
+2. **Krok 2: preset Balanced** (z pullback + ADX 22). Porównaj liczby z Conservative na tym samym oknie. Powinny być **lepsze lub porównywalne** — jeśli gorsze, ADX nie pomógł i zostań przy Conservative.
+3. **Krok 3 (opcjonalnie): Aggressive** dla rynków, gdzie Balanced ma za mało okazji.
+
 ## 11.C Najczęstsze błędy uruchomienia (FAQ)
 
 ### Błąd 1: 100+ transakcji i ujemny wynik („sieczka")

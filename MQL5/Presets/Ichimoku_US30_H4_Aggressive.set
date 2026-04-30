@@ -1,9 +1,11 @@
-; Ichimoku US30 H4 BossaFX - preset AGGRESSIVE (zlagodzony v1.14)
-; Profil: wieksza frekwencja niz Balanced, ALE filtry jakosci ZOSTAJA
-; (Chikou, StrongTKCross, Slope) - inaczej powstaje sieczka.
-; Cel: PF >= 1.4, Win% 45-55, ~50-80 trades/rok.
+; Ichimoku US30 H4 BossaFX - preset AGGRESSIVE (v1.16)
+; Profil: TK Cross + Pullback Kijun + Pullback Tenkan + LowerTF Early Entry
+; Wszystkie filtry jakosci (Chikou, StrongTKCross, Slope, ADX) WLACZONE.
+; Tylko REQUIRE2BARS na momentum osloniony, by wyciszyc szum.
+; Cel: 60-100 trades/rok, PF >= 1.3, Win% >= 45, Max DD < 22%
 ;
-; Format MT5 .set: nazwa=wartosc
+; UWAGA: backtest osobny obowiazkowy. Ten preset ma najwiecej okazji
+; (i bledow). Nie polaczy sie z malym depozytem przy 1.5% risk.
 
 InpSymbol=
 InpMagic=30040026
@@ -19,8 +21,14 @@ InpEnableTKCrossEntry=true
 InpEnablePullbackEntry=true
 InpPullbackOnTenkan=true
 InpPullbackOnKijun=true
-InpPullbackLookback=8
-InpPullbackTouchTolATR=0.35
+InpPullbackLookback=6
+InpPullbackTouchTolATR=0.30
+
+InpUseADXFilter=true
+InpADXTimeframe=16388
+InpADXPeriod=14
+InpADXMinForPullback=20.0
+InpADXMinForTKCross=15.0
 
 InpUseChikouFilter=true
 InpUseFutureKumoFilter=true
@@ -32,6 +40,7 @@ InpUseSlopeFilter=true
 InpSlopeLookback=3
 InpRequireKijunSlope=true
 InpRequireTenkanSlope=false
+InpSlopeMinATRMove=0.10
 
 InpUseSpreadFilter=true
 InpMaxSpreadPoints=120
@@ -66,9 +75,11 @@ InpLowerTFEntryLookback=2
 InpLowerTFRequireH4Trend=true
 
 InpUseStrongMomentumExit=true
-InpMomentumATRMult=1.4
+InpMomentumATRMult=1.6
 InpMomentumBodyPct=0.55
-InpMomentumOnNewBarOnly=false
+InpMomentumOnNewBarOnly=true
+InpMomentumRequireProfit=true
+InpMomentumRequire2Bars=true
 
 InpUseKijunTrailing=true
 InpKijunTrailBuffer=80
