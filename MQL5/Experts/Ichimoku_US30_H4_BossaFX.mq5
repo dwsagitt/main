@@ -8,7 +8,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Cursor Cloud Agent - 2026"
 #property link      "https://bossafx.pl"
-#property version   "1.00"
+#property version   "1.10"
 #property strict
 #property description "Pełna strategia Ichimoku dla US30 H4 (BossaFX) z autolotem"
 
@@ -36,13 +36,25 @@ input int     InpKijun             = 26;              // Kijun-sen
 input int     InpSenkouB           = 52;              // Senkou Span B
 input int     InpChikouShift       = 26;              // Przesunięcie Chikou (i Kumo)
 
+input group "=== Tryby wejścia ==="
+input bool    InpEnableTKCrossEntry = true;           // [Tryb 1] Wejście na świeżym TK Cross (breakout)
+input bool    InpEnablePullbackEntry = true;          // [Tryb 2] Wejście na pullbacku do TS/KS w trendzie
+input bool    InpPullbackOnTenkan  = true;            //   Pullback do Tenkan-sen (krótkie korekty)
+input bool    InpPullbackOnKijun   = true;            //   Pullback do Kijun-sen (głębsze korekty)
+input int     InpPullbackLookback  = 6;               //   Ile świec wstecz szukamy dotknięcia TS/KS
+input double  InpPullbackTouchTolATR = 0.25;          //   Tolerancja dotknięcia (× ATR), 0.25 = blisko TS/KS
+
 input group "=== Filtry trendu ==="
 input bool    InpUseChikouFilter   = true;            // Wymagaj potwierdzenia Chikou Span
 input bool    InpUseFutureKumoFilter = true;          // Wymagaj zgodności przyszłej chmury (Senkou A vs B)
 input bool    InpUseKijunFilter    = true;            // Cena musi być po właściwej stronie Kijun-sen
-input bool    InpRequireTKCross    = true;            // Wymagaj świeżego przecięcia Tenkan/Kijun (TK Cross)
-input int     InpTKCrossLookback   = 5;               // Ile świec wstecz akceptujemy świeży TK Cross
-input bool    InpStrongTKCrossOnly = true;            // Tylko mocne TK Cross (przecięcie ponad/pod chmurą)
+input bool    InpRequireTKCross    = true;            // [TK Cross] Wymagaj świeżego przecięcia Tenkan/Kijun
+input int     InpTKCrossLookback   = 5;               // [TK Cross] Ile świec wstecz akceptujemy świeży TK Cross
+input bool    InpStrongTKCrossOnly = true;            // [TK Cross] Tylko mocne TK Cross (przecięcie ponad/pod chmurą)
+input bool    InpUseSlopeFilter    = true;            // Wymagaj zgodnego nachylenia Tenkan/Kijun (KS/TS nie spadają w longu)
+input int     InpSlopeLookback     = 3;               // O ile świec wstecz porównujemy slope TS/KS
+input bool    InpRequireKijunSlope = true;            // Wymagaj nachylenia Kijun (kluczowe dla trendu)
+input bool    InpRequireTenkanSlope = false;          // Wymagaj nachylenia Tenkan (rygorystyczne)
 
 input group "=== Filtry rynkowe ==="
 input bool    InpUseSpreadFilter   = true;            // Filtr maksymalnego spreadu
@@ -72,19 +84,26 @@ input int     InpSLBufferPoints    = 50;              // Bufor SL w punktach (po
 input int     InpMinStopPoints     = 200;             // Minimalna odległość SL od ceny (US30: 200 pkt = ~2 pkt cenowe)
 
 input group "=== Trailing i wyjścia ==="
-input bool    InpUseKijunTrailing  = true;            // Trailing po Kijun-sen
+input bool    InpUseKijunTrailing  = true;            // Trailing po Kijun-sen (dalszy)
 input int     InpKijunTrailBuffer  = 100;             // Bufor trailingu (punkty) za Kijun
+input bool    InpUseTenkanTrailing = false;           // Trailing po Tenkan-sen (ciaśniejszy, w mocnym trendzie)
+input int     InpTenkanTrailBuffer = 50;              // Bufor trailingu (punkty) za Tenkan
+input bool    InpTenkanTrailAfterPartial = true;      // Włącz Tenkan-trailing dopiero po częściowym TP
 input bool    InpExitOnTKCross     = true;            // Zamknij gdy odwrotny TK Cross
 input bool    InpExitOnCloudBreak  = true;            // Zamknij gdy cena wraca do/za chmurę
 input bool    InpUseBreakEven      = true;            // Przesuń SL na BE po osiągnięciu R
 input double  InpBreakEvenAtR      = 1.0;             // Po ilu R uruchomić BE (1.0 = po pierwszym R)
 input int     InpBreakEvenOffsetPt = 30;              // Offset BE w punktach (lock zysku)
+input bool    InpUsePartialTP      = true;            // Częściowy TP (zamknij część na 1R)
+input double  InpPartialTPAtR      = 1.0;             // Przy ilu R wykonać częściowy TP
+input double  InpPartialTPPercent  = 50.0;            // % wolumenu zamykanego przy częściowym TP
 
 input group "=== Ograniczenia handlu ==="
 input int     InpMaxPositions      = 1;               // Max otwartych pozycji EA na symbolu
-input bool    InpOnePositionPerBar = true;            // Tylko 1 sygnał na słupek
+input bool    InpOnePositionPerBar = true;            // Tylko 1 sygnał na słupek (dotyczy TK-Cross; pullbacki re-enter dozwolone)
 input bool    InpAllowHedge        = false;           // Zezwól na pozycje przeciwne (hedge)
 input int     InpSlippagePoints    = 30;              // Maks. poślizg [pkt]
+input int     InpCooldownBarsAfterLoss = 2;           // Cooldown w słupkach po stratnej transakcji (0 = brak)
 
 //==================================================================
 // ZMIENNE GLOBALNE
@@ -93,7 +112,10 @@ int      ichi_handle = INVALID_HANDLE;
 int      atr_handle  = INVALID_HANDLE;
 string   gSymbol     = "";
 datetime gLastBarTime = 0;
-datetime gLastTradeBar = 0;
+datetime gLastTKCrossBar = 0;        // ostatni słupek z wejściem na TK-Cross (one-per-bar)
+datetime gLastClosedTradeBar = 0;    // słupek na którym zamknięta została ostatnia pozycja EA
+double   gLastClosedTradeProfit = 0; // wynik (waluta) ostatnio zamkniętej pozycji
+ulong    gPartialDoneTickets[];      // tickety, dla których wykonano już częściowy TP
 
 #define IDX_TENKAN  0
 #define IDX_KIJUN   1
@@ -380,16 +402,86 @@ double CalculateLot(double slDistancePoints)
 }
 
 //+------------------------------------------------------------------+
-//| Sygnał wejścia: zwraca 1=BUY, -1=SELL, 0=brak                    |
+//| Slope Tenkan / Kijun (1=rośnie, -1=spada, 0=płasko/n-a)          |
 //+------------------------------------------------------------------+
-int CheckEntrySignal()
+int LineSlope(int bufferIdx, int lookback)
 {
+   double a[];
+   ArraySetAsSeries(a, true);
+   int need = lookback + 2;
+   if(CopyBuffer(ichi_handle, bufferIdx, 1, need, a) < need) return 0;
+   double now  = a[0];
+   double prev = a[lookback];
+   if(now > prev) return 1;
+   if(now < prev) return -1;
+   return 0;
+}
+
+//+------------------------------------------------------------------+
+//| Czy w ostatnich N świecach był pullback (low <= TS+tol lub HIGH) |
+//| i ostatnia świeca zamknęła się ponad/pod linią (potwierdzenie)   |
+//| dir: 1=BUY (long), -1=SELL                                       |
+//| line: 'T' lub 'K'                                                |
+//+------------------------------------------------------------------+
+bool DetectPullbackTouch(int dir, char line, int lookback, double tol)
+{
+   int bufIdx = (line == 'T') ? IDX_TENKAN : IDX_KIJUN;
+
+   double lineArr[];
+   ArraySetAsSeries(lineArr, true);
+   int need = lookback + 2;
+   if(CopyBuffer(ichi_handle, bufIdx, 1, need, lineArr) < need) return false;
+
+   double highArr[], lowArr[], closeArr[];
+   ArraySetAsSeries(highArr,  true);
+   ArraySetAsSeries(lowArr,   true);
+   ArraySetAsSeries(closeArr, true);
+   if(CopyHigh (gSymbol, PERIOD_H4, 1, need, highArr)  < need) return false;
+   if(CopyLow  (gSymbol, PERIOD_H4, 1, need, lowArr)   < need) return false;
+   if(CopyClose(gSymbol, PERIOD_H4, 1, need, closeArr) < need) return false;
+
+   double atr = GetATR(1);
+   if(atr <= 0) return false;
+   double tolPrice = tol * atr;
+
+   bool touched = false;
+   for(int i = 0; i < lookback; i++)
+   {
+      double L = lineArr[i];
+      if(dir == 1)
+      {
+         if(lowArr[i] <= L + tolPrice) { touched = true; break; }
+      }
+      else
+      {
+         if(highArr[i] >= L - tolPrice) { touched = true; break; }
+      }
+   }
+   if(!touched) return false;
+
+   double L1   = lineArr[0];
+   double C1   = closeArr[0];
+   double C2   = closeArr[1];
+
+   if(dir == 1)
+      return (C1 > L1 && C1 > C2);
+   else
+      return (C1 < L1 && C1 < C2);
+}
+
+//+------------------------------------------------------------------+
+//| Sygnał wejścia: zwraca 1=BUY, -1=SELL, 0=brak                    |
+//| Wypełnia signalKind:                                             |
+//|   "TKCROSS" - przebicie TK Cross,                                |
+//|   "PB_TENKAN" / "PB_KIJUN" - pullback bounce                     |
+//+------------------------------------------------------------------+
+int CheckEntrySignal(string &signalKind)
+{
+   signalKind = "";
+
    double t1, k1, sa1, sb1, ch1;
    if(!GetIchimoku(1, t1, k1, sa1, sb1, ch1)) return 0;
 
-   // Projekcja przyszłej chmury (26 świec do przodu) liczona klasycznie:
-   //   Future Senkou A = (Tenkan + Kijun) / 2
-   //   Future Senkou B = (max(High, 52) + min(Low, 52)) / 2
    double futA = (t1 + k1) / 2.0;
    double highArr[], lowArr[];
    ArraySetAsSeries(highArr, true);
@@ -405,10 +497,6 @@ int CheckEntrySignal()
    if(close1 == 0 || close26 == 0) return 0;
 
    int priceVsCloud = PriceVsCloud(close1, sa1, sb1);
-   int tkCross = InpRequireTKCross ? DetectTKCross(InpTKCrossLookback) : (t1 > k1 ? 1 : (t1 < k1 ? -1 : 0));
-
-   bool tkBull = (tkCross == 1);
-   bool tkBear = (tkCross == -1);
 
    bool kijunBull = !InpUseKijunFilter || (close1 > k1);
    bool kijunBear = !InpUseKijunFilter || (close1 < k1);
@@ -419,14 +507,61 @@ int CheckEntrySignal()
    bool futureBull = !InpUseFutureKumoFilter || (futA > futB);
    bool futureBear = !InpUseFutureKumoFilter || (futA < futB);
 
-   bool strongBull = !InpStrongTKCrossOnly || (MathMin(t1,k1) > MathMax(sa1, sb1));
-   bool strongBear = !InpStrongTKCrossOnly || (MathMax(t1,k1) < MathMin(sa1, sb1));
+   bool tAboveCloud = (MathMin(t1,k1) > MathMax(sa1, sb1));
+   bool tBelowCloud = (MathMax(t1,k1) < MathMin(sa1, sb1));
 
-   if(priceVsCloud == 1 && tkBull && kijunBull && chikouBull && futureBull && strongBull)
-      return 1;
+   int slopeT = InpUseSlopeFilter ? LineSlope(IDX_TENKAN, InpSlopeLookback) : 0;
+   int slopeK = InpUseSlopeFilter ? LineSlope(IDX_KIJUN,  InpSlopeLookback) : 0;
+   bool slopeBull = !InpUseSlopeFilter
+                    || ((!InpRequireKijunSlope || slopeK >= 0) &&
+                        (!InpRequireTenkanSlope || slopeT >= 0) &&
+                        (slopeK >= 0 || slopeT >= 0));
+   bool slopeBear = !InpUseSlopeFilter
+                    || ((!InpRequireKijunSlope || slopeK <= 0) &&
+                        (!InpRequireTenkanSlope || slopeT <= 0) &&
+                        (slopeK <= 0 || slopeT <= 0));
 
-   if(priceVsCloud == -1 && tkBear && kijunBear && chikouBear && futureBear && strongBear)
-      return -1;
+   bool baseBull = (priceVsCloud == 1) && kijunBull && chikouBull && futureBull && slopeBull;
+   bool baseBear = (priceVsCloud == -1) && kijunBear && chikouBear && futureBear && slopeBear;
+
+   // ------------------------------------------------------------------
+   // [Tryb 1] TK CROSS (breakout)
+   // ------------------------------------------------------------------
+   if(InpEnableTKCrossEntry)
+   {
+      int tkCross = InpRequireTKCross ? DetectTKCross(InpTKCrossLookback) : (t1 > k1 ? 1 : (t1 < k1 ? -1 : 0));
+      bool strongBull = !InpStrongTKCrossOnly || tAboveCloud;
+      bool strongBear = !InpStrongTKCrossOnly || tBelowCloud;
+
+      if(baseBull && tkCross == 1 && strongBull) { signalKind = "TKCROSS"; return 1; }
+      if(baseBear && tkCross == -1 && strongBear) { signalKind = "TKCROSS"; return -1; }
+   }
+
+   // ------------------------------------------------------------------
+   // [Tryb 2] PULLBACK BOUNCE (kontynuacja trendu na dotknięciu TS/KS)
+   // Wymaga aktualnie potwierdzonego trendu (TK po właściwej stronie chmury,
+   // TS i KS rosną/spadają, cena nad/pod chmurą) i świecy potwierdzającej.
+   // ------------------------------------------------------------------
+   if(InpEnablePullbackEntry)
+   {
+      bool trendUp   = baseBull && (t1 > k1) && tAboveCloud;
+      bool trendDown = baseBear && (t1 < k1) && tBelowCloud;
+
+      if(trendUp)
+      {
+         if(InpPullbackOnTenkan && DetectPullbackTouch(1, 'T', InpPullbackLookback, InpPullbackTouchTolATR))
+            { signalKind = "PB_TENKAN"; return 1; }
+         if(InpPullbackOnKijun  && DetectPullbackTouch(1, 'K', InpPullbackLookback, InpPullbackTouchTolATR))
+            { signalKind = "PB_KIJUN";  return 1; }
+      }
+      if(trendDown)
+      {
+         if(InpPullbackOnTenkan && DetectPullbackTouch(-1, 'T', InpPullbackLookback, InpPullbackTouchTolATR))
+            { signalKind = "PB_TENKAN"; return -1; }
+         if(InpPullbackOnKijun  && DetectPullbackTouch(-1, 'K', InpPullbackLookback, InpPullbackTouchTolATR))
+            { signalKind = "PB_KIJUN";  return -1; }
+      }
+   }
 
    return 0;
 }
@@ -488,9 +623,27 @@ bool ComputeSLTP(int dir, double price, double &sl, double &tp, double &slDistPt
 }
 
 //+------------------------------------------------------------------+
+//| Tracking ticketów z wykonanym częściowym TP                      |
+//+------------------------------------------------------------------+
+bool IsPartialDone(ulong ticket)
+{
+   for(int i = 0; i < ArraySize(gPartialDoneTickets); i++)
+      if(gPartialDoneTickets[i] == ticket) return true;
+   return false;
+}
+
+void MarkPartialDone(ulong ticket)
+{
+   if(IsPartialDone(ticket)) return;
+   int n = ArraySize(gPartialDoneTickets);
+   ArrayResize(gPartialDoneTickets, n + 1);
+   gPartialDoneTickets[n] = ticket;
+}
+
+//+------------------------------------------------------------------+
 //| Otwarcie pozycji                                                 |
 //+------------------------------------------------------------------+
-void TryOpen(int dir)
+void TryOpen(int dir, string kind)
 {
    if(!SpreadOK()) return;
    sym.RefreshRates();
@@ -510,17 +663,19 @@ void TryOpen(int dir)
       return;
    }
 
+   string cmt = InpComment + "_" + kind;
+
    bool ok = false;
    if(dir == 1)
-      ok = trade.Buy(lots, gSymbol, price, sl, tp, InpComment);
+      ok = trade.Buy(lots, gSymbol, price, sl, tp, cmt);
    else
-      ok = trade.Sell(lots, gSymbol, price, sl, tp, InpComment);
+      ok = trade.Sell(lots, gSymbol, price, sl, tp, cmt);
 
    if(ok)
    {
-      gLastTradeBar = gLastBarTime;
-      PrintFormat("OTWARTO %s: lot=%.2f, price=%.2f, SL=%.2f (%.0f pkt), TP=%.2f, RR=%.2f",
-                  (dir==1?"BUY":"SELL"), lots, price, sl, slDistPts, tp, InpRR);
+      if(kind == "TKCROSS") gLastTKCrossBar = gLastBarTime;
+      PrintFormat("OTWARTO %s [%s]: lot=%.2f, price=%.2f, SL=%.2f (%.0f pkt), TP=%.2f, RR=%.2f",
+                  (dir==1?"BUY":"SELL"), kind, lots, price, sl, slDistPts, tp, InpRR);
    }
    else
    {
@@ -581,23 +736,75 @@ void ManagePositions()
          }
       }
 
-      // === Break-Even ===
-      if(InpUseBreakEven && curSL > 0)
+      double initRisk = (curSL > 0) ? MathAbs(open - curSL) : 0;
+      double moved    = isBuy ? (price - open) : (open - price);
+
+      // === Częściowy TP po 1R ===
+      if(InpUsePartialTP && initRisk > 0 && !IsPartialDone(ticket))
       {
-         double initRisk = MathAbs(open - curSL);
-         if(initRisk > 0)
+         if(moved >= InpPartialTPAtR * initRisk)
          {
-            double moved = isBuy ? (price - open) : (open - price);
-            if(moved >= InpBreakEvenAtR * initRisk)
+            double posVol = pos.Volume();
+            double step   = SymbolInfoDouble(gSymbol, SYMBOL_VOLUME_STEP);
+            double minV   = SymbolInfoDouble(gSymbol, SYMBOL_VOLUME_MIN);
+            if(step <= 0) step = 0.01;
+            double closeVol = posVol * (InpPartialTPPercent / 100.0);
+            closeVol = MathFloor(closeVol / step) * step;
+            closeVol = NormalizeDouble(closeVol, 2);
+
+            double remain = NormalizeDouble(posVol - closeVol, 2);
+            if(closeVol >= minV && remain >= minV)
             {
-               double beSL = isBuy ? (open + InpBreakEvenOffsetPt * point) : (open - InpBreakEvenOffsetPt * point);
-               bool needUpdate = isBuy ? (curSL < beSL) : (curSL > beSL || curSL == 0);
-               if(needUpdate)
+               if(trade.PositionClosePartial(ticket, closeVol))
                {
-                  if(trade.PositionModify(ticket, NPrice(beSL), curTP))
-                     PrintFormat("BE #%I64u: SL -> %.2f", ticket, beSL);
+                  MarkPartialDone(ticket);
+                  PrintFormat("Partial TP #%I64u: zamknieto %.2f z %.2f (po %.2fR)",
+                              ticket, closeVol, posVol, InpPartialTPAtR);
                }
             }
+            else
+            {
+               MarkPartialDone(ticket);
+            }
+         }
+      }
+
+      // === Break-Even ===
+      if(InpUseBreakEven && initRisk > 0)
+      {
+         if(moved >= InpBreakEvenAtR * initRisk)
+         {
+            double beSL = isBuy ? (open + InpBreakEvenOffsetPt * point) : (open - InpBreakEvenOffsetPt * point);
+            bool needUpdate = isBuy ? (curSL < beSL || curSL == 0) : (curSL > beSL || curSL == 0);
+            if(needUpdate)
+            {
+               if(trade.PositionModify(ticket, NPrice(beSL), curTP))
+                  PrintFormat("BE #%I64u: SL -> %.2f", ticket, beSL);
+            }
+         }
+      }
+
+      // === Trailing po Tenkan-sen (ciaśniejszy) ===
+      bool tenkanTrailActive = InpUseTenkanTrailing &&
+                               (!InpTenkanTrailAfterPartial || IsPartialDone(ticket));
+      if(tenkanTrailActive)
+      {
+         double newSL = isBuy
+                        ? (t1 - InpTenkanTrailBuffer * point)
+                        : (t1 + InpTenkanTrailBuffer * point);
+
+         long   stopsLevel = SymbolInfoInteger(gSymbol, SYMBOL_TRADE_STOPS_LEVEL);
+         double minStop    = stopsLevel * point;
+
+         if(isBuy && newSL > curSL && newSL < price && (price - newSL) >= minStop)
+         {
+            if(trade.PositionModify(ticket, NPrice(newSL), curTP))
+               PrintFormat("Trailing #%I64u BUY (Tenkan): SL -> %.2f", ticket, newSL);
+         }
+         else if(!isBuy && (curSL == 0 || newSL < curSL) && newSL > price && (newSL - price) >= minStop)
+         {
+            if(trade.PositionModify(ticket, NPrice(newSL), curTP))
+               PrintFormat("Trailing #%I64u SELL (Tenkan): SL -> %.2f", ticket, newSL);
          }
       }
 
@@ -616,15 +823,42 @@ void ManagePositions()
          if(isBuy && newSL > curSL && newSL < price)
          {
             if(trade.PositionModify(ticket, NPrice(newSL), curTP))
-               PrintFormat("Trailing #%I64u BUY: SL -> %.2f (Kijun=%.2f)", ticket, newSL, k1);
+               PrintFormat("Trailing #%I64u BUY (Kijun): SL -> %.2f", ticket, newSL);
          }
          else if(!isBuy && (curSL == 0 || newSL < curSL) && newSL > price)
          {
             if(trade.PositionModify(ticket, NPrice(newSL), curTP))
-               PrintFormat("Trailing #%I64u SELL: SL -> %.2f (Kijun=%.2f)", ticket, newSL, k1);
+               PrintFormat("Trailing #%I64u SELL (Kijun): SL -> %.2f", ticket, newSL);
          }
       }
    }
+}
+
+//+------------------------------------------------------------------+
+//| Ile świec H4 mineło od podanego czasu (do TimeCurrent)           |
+//+------------------------------------------------------------------+
+int BarsSince(datetime t)
+{
+   if(t == 0) return 100000;
+   datetime arr[];
+   if(CopyTime(gSymbol, PERIOD_H4, t, TimeCurrent(), arr) <= 0) return 100000;
+   return ArraySize(arr) - 1;
+}
+
+//+------------------------------------------------------------------+
+//| Czy aktywny cooldown po stracie                                  |
+//+------------------------------------------------------------------+
+bool InCooldownAfterLoss()
+{
+   if(InpCooldownBarsAfterLoss <= 0) return false;
+   if(gLastClosedTradeBar == 0) return false;
+   if(gLastClosedTradeProfit >= 0) return false;
+   int bars = BarsSince(gLastClosedTradeBar);
+   if(bars < InpCooldownBarsAfterLoss)
+   {
+      return true;
+   }
+   return false;
 }
 
 //+------------------------------------------------------------------+
@@ -640,14 +874,18 @@ void OnTick()
 
    if(!InSession())   return;
    if(FridayBlock())  return;
-
-   if(InpOnePositionPerBar && gLastTradeBar == gLastBarTime) return;
+   if(InCooldownAfterLoss()) return;
 
    int totalPos = CountPositions();
    if(totalPos >= InpMaxPositions && !InpAllowHedge) return;
 
-   int signal = CheckEntrySignal();
+   string kind = "";
+   int signal = CheckEntrySignal(kind);
    if(signal == 0) return;
+
+   // One-per-bar dotyczy tylko trybu TK Cross (pullbacki mogą wystąpić tuż
+   // po zamknięciu poprzedniej pozycji na tym samym słupku)
+   if(InpOnePositionPerBar && kind == "TKCROSS" && gLastTKCrossBar == gLastBarTime) return;
 
    if(!InpAllowHedge)
    {
@@ -655,7 +893,49 @@ void OnTick()
       if(signal == -1 && CountPositions(0) > 0) return; // mamy BUY
    }
 
-   TryOpen(signal);
+   TryOpen(signal, kind);
+}
+
+//+------------------------------------------------------------------+
+//| OnTradeTransaction - sledzimy zamkniecia dla cooldown            |
+//+------------------------------------------------------------------+
+void OnTradeTransaction(const MqlTradeTransaction& trans,
+                        const MqlTradeRequest&    request,
+                        const MqlTradeResult&     result)
+{
+   if(trans.type != TRADE_TRANSACTION_DEAL_ADD) return;
+   if(trans.symbol != gSymbol) return;
+
+   if(!HistoryDealSelect(trans.deal)) return;
+   if((long)HistoryDealGetInteger(trans.deal, DEAL_MAGIC) != InpMagic) return;
+
+   long entry = HistoryDealGetInteger(trans.deal, DEAL_ENTRY);
+   if(entry != DEAL_ENTRY_OUT && entry != DEAL_ENTRY_INOUT) return;
+
+   double profit = HistoryDealGetDouble(trans.deal, DEAL_PROFIT)
+                 + HistoryDealGetDouble(trans.deal, DEAL_SWAP)
+                 + HistoryDealGetDouble(trans.deal, DEAL_COMMISSION);
+
+   ulong posId = trans.position;
+
+   bool stillOpen = PositionSelectByTicket(posId);
+   if(stillOpen) return; // to bylo czesciowe zamkniecie, nie aktualizujemy cooldown ani listy partial
+
+   gLastClosedTradeBar    = gLastBarTime;
+   gLastClosedTradeProfit = profit;
+
+   for(int i = ArraySize(gPartialDoneTickets) - 1; i >= 0; i--)
+   {
+      if(gPartialDoneTickets[i] == posId)
+      {
+         for(int j = i; j < ArraySize(gPartialDoneTickets) - 1; j++)
+            gPartialDoneTickets[j] = gPartialDoneTickets[j+1];
+         ArrayResize(gPartialDoneTickets, ArraySize(gPartialDoneTickets) - 1);
+      }
+   }
+
+   PrintFormat("Zamknieto pozycje #%I64u: profit=%.2f, cooldown=%s",
+               posId, profit, (profit < 0 ? "TAK" : "NIE"));
 }
 
 //+------------------------------------------------------------------+

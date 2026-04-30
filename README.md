@@ -10,21 +10,30 @@ dla indeksu **US30** (Dow Jones 30 CFD) na interwale **H4**, dla brokera
 - [`MQL5/Experts/Ichimoku_US30_H4_BossaFX.mq5`](MQL5/Experts/Ichimoku_US30_H4_BossaFX.mq5) — Expert Advisor (kompilowalny w MetaEditor 5).
 - [`docs/STRATEGIA.md`](docs/STRATEGIA.md) — pełna dokumentacja strategii: warunki wejścia, SL/TP, autolot, filtry, parametry.
 
-## Co potrafi EA
+## Co potrafi EA (v1.10)
 
-- **Sygnały Ichimoku** z wieloma warstwami filtrów:
+- **Dwa tryby wejścia**:
+  - **TK Cross** — świeże przecięcie Tenkan/Kijun nad/pod chmurą (start trendu).
+  - **Pullback bounce** — wejścia na korektach do Tenkan-sen lub Kijun-sen
+    w potwierdzonym trendzie (kontynuacja trendu — łapie sygnały, których
+    nie generuje sam TK Cross).
+- **Filtr nachylenia (slope)** Tenkan/Kijun — wymusza, by Kijun (i opcjonalnie
+  Tenkan) miały właściwy kierunek (długi → KS rośnie, short → KS spada).
+- Pełen zestaw klasycznych filtrów Ichimoku:
   - cena vs chmura (Kumo),
-  - świeży TK Cross (Tenkan × Kijun) z opcją „mocnego" przecięcia ponad/pod chmurą,
   - filtr Kijun-sen,
   - filtr Chikou Span (close[1] vs close[27]),
   - filtr przyszłej chmury (projekcja Senkou A vs B 26 świec do przodu).
-- **Decyzje na zamknięciu świecy H4** (one decision per bar — eliminacja powtórzeń).
+- **Decyzje na zamknięciu świecy H4**.
 - **Dynamiczny SL/TP**: najszerszy z (ATR×2, za Kijun, za przeciwnym brzegiem Kumo) + bufor; TP wg Risk:Reward (domyślnie 1:2).
 - **Autolot** — pozycja liczona z equity, % ryzyka i dystansu SL.
-- **Break-Even po 1R** (z lockiem zysku).
-- **Trailing po Kijun-sen** z buforem.
+- **Częściowy TP po 1R** (50% wolumenu) + **runner** z trailingiem.
+- **Break-Even po 1R** z lockiem zysku.
+- **Dwustopniowy trailing**: po **Tenkan-sen** (ciaśniejszy, opcjonalny po
+  częściowym TP) i po **Kijun-sen** (bazowy).
 - **Wyjścia awaryjne** na odwrotnym TK Cross lub powrocie ceny do/za chmurę.
-- Filtry **spreadu**, **sesji**, **blokady piątkowej**.
+- **Cooldown po stracie** (N świec H4 pauzy).
+- Filtry **spreadu**, **sesji**, **blokady piątkowej**, **max pozycji**, hedge off.
 - Zgodność z brokerem **BossaFX** — wybór symbolu przez parametr (US30 / US30.cash / DJI30 / .US30 itp.).
 
 ## Instalacja w MT5 (BossaFX)

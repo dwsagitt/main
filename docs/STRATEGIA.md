@@ -40,31 +40,63 @@ Klasyczne wartości **9 / 26 / 52 / 26**:
 
 ## 3. Warunki wejścia (LONG / SHORT)
 
-EA otwiera pozycję dopiero po **zamknięciu świecy H4**, gdy spełnione są
-**wszystkie** poniższe warunki (każdy filtr można wyłączyć w parametrach):
+EA podejmuje decyzję dopiero po **zamknięciu świecy H4** i obsługuje
+**dwa tryby wejścia** (oba można niezależnie włączać/wyłączać):
 
-### 3.1 LONG (BUY)
-1. **Cena zamknięcia świecy 1 powyżej Kumo** (Senkou A i Senkou B).
-2. **Świeży byczy TK Cross** (Tenkan przecina Kijun w górę) w ciągu
-   ostatnich `InpTKCrossLookback` świec (domyślnie 5). Jeżeli filtr wyłączony —
-   wystarczy `Tenkan > Kijun`.
-3. **Mocny TK Cross**: przecięcie nastąpiło **ponad chmurą** (najsłabsza
-   z linii TK > górna krawędź Kumo) — opcjonalne (`InpStrongTKCrossOnly`).
-4. **Cena > Kijun-sen** (filtr trendu).
-5. **Chikou Span > cena 26 świec wstecz** (potwierdzenie momentum).
-6. **Przyszła chmura bycza**: projekcja `Senkou A > Senkou B` 26 świec do przodu
-   (liczona klasycznie z aktualnych Tenkan/Kijun oraz max/min 52 świec).
-7. Spread ≤ `InpMaxSpreadPoints`, sesja aktywna, brak blokady piątkowej.
+### 3.0 Wspólny zestaw filtrów trendu (obowiązuje w obu trybach)
 
-### 3.2 SHORT (SELL)
-Lustrzane warunki:
-1. Cena < Kumo.
-2. Świeży **niedźwiedzi TK Cross**.
-3. Mocny TK Cross **pod chmurą**.
-4. Cena < Kijun-sen.
-5. Chikou Span < cena 26 świec wstecz.
-6. Przyszła chmura niedźwiedzia (`Senkou A < Senkou B`).
-7. Filtry rynkowe j.w.
+Wszystkie poniższe muszą być spełnione (każdy można wyłączyć parametrem):
+
+- **Cena zamknięcia [1] powyżej / poniżej Kumo** (`Senkou A`, `Senkou B`).
+- **Cena vs Kijun-sen** po właściwej stronie (`InpUseKijunFilter`).
+- **Chikou Span**: `close[1] > close[1+26]` (long) / odwrotnie (short)
+  (`InpUseChikouFilter`).
+- **Przyszła chmura zgodna z kierunkiem**: projekcja `Senkou A` vs `Senkou B`
+  26 świec do przodu (`InpUseFutureKumoFilter`).
+- **Slope filter** — *odpowiedź na obserwację, że "KS i TS nie spadał"*:
+  - dla LONG: Kijun-sen i/lub Tenkan-sen muszą **rosnąć** w ciągu ostatnich
+    `InpSlopeLookback` świec (domyślnie 3),
+  - dla SHORT: muszą **spadać**.
+  - `InpRequireKijunSlope = true` (domyślnie) — Kijun musi mieć właściwe
+    nachylenie. To kluczowy filtr, eliminujący wejścia w bok.
+  - `InpRequireTenkanSlope = false` (domyślnie) — Tenkan może być płaski.
+- Filtry rynkowe: spread ≤ `InpMaxSpreadPoints`, sesja, brak blokady piątkowej,
+  brak cooldownu po stracie.
+
+### 3.1 Tryb 1: TK Cross (`InpEnableTKCrossEntry`)
+
+Klasyczne wejście na **świeżym przecięciu Tenkan/Kijun**:
+
+- **Świeży byczy/niedźwiedzi TK Cross** w ciągu ostatnich
+  `InpTKCrossLookback` świec (domyślnie 5).
+- **Mocny TK Cross** (`InpStrongTKCrossOnly`): obie linie TK po właściwej
+  stronie chmury (powyżej całej Kumo dla LONG / poniżej dla SHORT).
+
+Tryb dobry na **starty trendu** po wyjściu z konsolidacji/przebiciu chmury.
+Ograniczenie: **w trwającym trendzie nie ma już świeżego TK Cross**, więc nie
+łapie kontynuacji (stąd Tryb 2).
+
+### 3.2 Tryb 2: Pullback bounce (`InpEnablePullbackEntry`) — *NOWY*
+
+**Wejścia w trakcie trendu na korektach do Tenkan-sen/Kijun-sen.** To było
+brakujące ogniwo — sygnał, którego oczekiwałeś na wykresie, gdy cena cofała
+do TS/KS, a TS i KS nie spadały (cały czas rosły).
+
+Warunki dodatkowe ponad sekcję 3.0:
+
+- Cała struktura trendu potwierdzona: **TS po właściwej stronie KS** i **obie
+  linie po właściwej stronie chmury** (silna struktura trendu).
+- **Dotknięcie linii** (`InpPullbackOnTenkan` lub `InpPullbackOnKijun`)
+  w ciągu ostatnich `InpPullbackLookback` świec (domyślnie 6):
+  - LONG: `low[i] ≤ Tenkan/Kijun + InpPullbackTouchTolATR × ATR`,
+  - SHORT: `high[i] ≥ Tenkan/Kijun − InpPullbackTouchTolATR × ATR`.
+- **Świeca potwierdzająca [1]**:
+  - LONG: `close[1] > Tenkan/Kijun[1]` **i** `close[1] > close[2]`
+    (świeca odbiciowa zamykająca się ponad linią),
+  - SHORT: lustrzanie.
+
+Pullback do **Tenkan-sen** = częstsze, ciasne wejścia w mocnych trendach.
+Pullback do **Kijun-sen** = rzadsze, głębsze korekty, większe RR.
 
 ## 4. Stop-Loss i Take-Profit
 
@@ -84,14 +116,28 @@ SL (`InpMinStopPoints` oraz brokerowy `SYMBOL_TRADE_STOPS_LEVEL`).
 
 ## 5. Zarządzanie pozycją
 
-- **Break-Even**: po osiągnięciu `InpBreakEvenAtR × R` (domyślnie 1R)
-  SL przesuwany na poziom otwarcia + `InpBreakEvenOffsetPt` punktów (lock zysku).
-- **Trailing po Kijun-sen**: SL podążający za Kijun-sen z buforem
-  `InpKijunTrailBuffer`. SL podnosimy/obniżamy tylko, gdy nowy poziom jest
-  bardziej konserwatywny (BUY: wyżej; SELL: niżej).
-- **Wyjście awaryjne**:
-  - odwrotny TK Cross (`InpExitOnTKCross`),
-  - powrót ceny zamknięcia do/za chmurę (`InpExitOnCloudBreak`).
+Kolejność operacji na każdym ticku (ale z `IsNewBarH4` dla logiki czasowej):
+
+1. **Częściowy TP** (`InpUsePartialTP`, domyślnie ON): po osiągnięciu
+   `InpPartialTPAtR × R` (domyślnie 1R) zamykane jest `InpPartialTPPercent`
+   wolumenu (domyślnie 50%). Zostaje "runner" na resztę ruchu.
+2. **Break-Even**: po osiągnięciu `InpBreakEvenAtR × R` (domyślnie 1R)
+   SL przesuwany na poziom otwarcia + `InpBreakEvenOffsetPt` punktów (lock zysku).
+3. **Trailing po Tenkan-sen** (`InpUseTenkanTrailing`, domyślnie OFF):
+   ciaśniejszy trailing, włączany opcjonalnie **dopiero po częściowym TP**
+   (`InpTenkanTrailAfterPartial`). Świetny do "runnerów" w mocnych trendach.
+4. **Trailing po Kijun-sen** (`InpUseKijunTrailing`, domyślnie ON):
+   bazowy trailing trendowy z buforem `InpKijunTrailBuffer`. SL przesuwa się
+   tylko w kierunku zysku.
+5. **Wyjścia awaryjne**:
+   - odwrotny TK Cross (`InpExitOnTKCross`),
+   - powrót ceny zamknięcia do/za chmurę (`InpExitOnCloudBreak`).
+
+### Cooldown po stracie
+
+`InpCooldownBarsAfterLoss` (domyślnie 2 świece H4) — po stratnej transakcji
+EA pauzuje przez N świec. Chroni przed serią szybkich powtórnych wejść w tym
+samym kierunku, gdy rynek właśnie się odwrócił.
 
 ## 6. AUTOLOT — wyliczanie wielkości pozycji
 
@@ -162,21 +208,70 @@ Jeżeli `InpUseAutoLot = false`, używany jest stały lot `InpFixedLot`.
 
 ## 10. Parametry — lista skrócona
 
+### Tryby wejścia
+
 | Parametr | Domyślnie | Opis |
 |---|---|---|
-| `InpSymbol` | `""` | nazwa symbolu (puste = wykres) |
-| `InpMagic` | `30040026` | unikalny magic dla EA |
-| `InpTenkan / InpKijun / InpSenkouB` | `9 / 26 / 52` | klasyczne Ichimoku |
+| `InpEnableTKCrossEntry` | `true` | Tryb 1: TK Cross |
+| `InpEnablePullbackEntry` | `true` | Tryb 2: Pullback do TS/KS |
+| `InpPullbackOnTenkan` | `true` | Pullback do Tenkan |
+| `InpPullbackOnKijun` | `true` | Pullback do Kijun |
+| `InpPullbackLookback` | `6` | Lookback świec dla dotknięcia |
+| `InpPullbackTouchTolATR` | `0.25` | Tolerancja dotknięcia (× ATR) |
+
+### Filtry trendu
+
+| Parametr | Domyślnie | Opis |
+|---|---|---|
 | `InpUseChikouFilter` | `true` | filtr Chikou |
 | `InpUseFutureKumoFilter` | `true` | zgodność przyszłej chmury |
 | `InpUseKijunFilter` | `true` | cena vs Kijun |
-| `InpRequireTKCross` | `true` | wymagaj TK Cross |
+| `InpRequireTKCross` | `true` | wymagaj TK Cross (tryb 1) |
+| `InpTKCrossLookback` | `5` | lookback dla TK Cross |
 | `InpStrongTKCrossOnly` | `true` | TK Cross po właściwej stronie chmury |
+| `InpUseSlopeFilter` | `true` | **Filtr nachylenia TS/KS** |
+| `InpSlopeLookback` | `3` | Lookback świec dla slope |
+| `InpRequireKijunSlope` | `true` | KS musi mieć właściwy kierunek |
+| `InpRequireTenkanSlope` | `false` | TS musi mieć właściwy kierunek |
+
+### Ryzyko / SL/TP
+
+| Parametr | Domyślnie | Opis |
+|---|---|---|
 | `InpUseAutoLot` | `true` | autolot |
 | `InpRiskPercent` | `1.0` | % equity na ryzyko |
 | `InpATRMultSL` | `2.0` | mnożnik ATR dla SL |
 | `InpRR` | `2.0` | Risk:Reward |
-| `InpUseKijunTrailing` | `true` | trailing po Kijun |
+| `InpUseKijunSL` / `InpUseCloudSL` | `true` | dodatkowe kandydaty SL |
+
+### Trailing i wyjścia
+
+| Parametr | Domyślnie | Opis |
+|---|---|---|
+| `InpUsePartialTP` | `true` | częściowy TP po 1R |
+| `InpPartialTPAtR` | `1.0` | przy ilu R |
+| `InpPartialTPPercent` | `50.0` | % wolumenu zamykanego |
 | `InpUseBreakEven` | `true` | BE po 1R |
+| `InpUseKijunTrailing` | `true` | trailing po Kijun |
+| `InpUseTenkanTrailing` | `false` | trailing po Tenkan (ciaśniejszy) |
+| `InpTenkanTrailAfterPartial` | `true` | Tenkan-trailing po częściowym TP |
 | `InpExitOnTKCross` | `true` | exit na odwrotnym TK |
 | `InpExitOnCloudBreak` | `true` | exit za chmurą |
+| `InpCooldownBarsAfterLoss` | `2` | pauza po stracie (świece H4) |
+
+## 11. Co dodano w wersji 1.10
+
+W odpowiedzi na obserwację z backtestu (US30 H4, sierpień–listopad 2025,
+zysk netto +869 / +8.69%, 29 transakcji, 55% Profit Trades, 1.52 PF):
+
+- **Drugi tryb wejścia (Pullback bounce)** — łapie kontynuacje trendu, gdy
+  cena cofa do Tenkan-sen lub Kijun-sen (odpowiedź na "dlaczego nie otworzył
+  transakcji w zaznaczonych miejscach").
+- **Filtr nachylenia (slope)** Tenkan/Kijun — bezpośrednia odpowiedź na
+  obserwację "KS i TS nie spadał": teraz EA wymaga, by Kijun (i opcjonalnie
+  Tenkan) miały właściwy kierunek nachylenia.
+- **Częściowy TP po 1R** + **trailing po Tenkan-sen** dla "runnera" w mocnych
+  trendach (lepsze wyciskanie z trendu, mniejszy drawdown).
+- **Cooldown po stracie** — chroni przed kaskadami stratnych wejść.
+- **One-position-per-bar** dotyczy teraz tylko TK Cross — pullback może
+  pojawić się tuż po zamknięciu poprzedniej pozycji.
